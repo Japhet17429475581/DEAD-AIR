@@ -1,0 +1,46 @@
+/* Cell geometry is invariant across state, pose, and glitch frames. */
+.skull {
+  --cell-font: 9px;
+  --cell-line: 7.3px;
+  position: relative;
+  display: block;
+  flex: 0 0 auto;
+  font-family: 'Consolas', 'Liberation Mono', 'Courier New', monospace;
+  font-size: var(--cell-font);
+  font-weight: 700;
+  font-variant-ligatures: none;
+  font-kerning: none;
+  letter-spacing: 0;
+  line-height: var(--cell-line);
+  width: 72ch;
+  height: calc(48 * var(--cell-line));
+  min-height: 0;
+  color: #39ff78;
+  text-shadow: 0 0 var(--glow, 4px) #39ff7860;
+  user-select: none;
+  contain: layout style;
+  isolation: isolate;
+  animation: none !important;
+  filter: none;
+  transform: none;
+}
+.skull .skull-grid { margin: 0; padding: 0; border: 0; width: 100%; height: 100%; overflow: hidden; white-space: pre; font: inherit; letter-spacing: inherit; line-height: inherit; }
+.skull .skull-row { display: block; height: var(--cell-line); min-height: 0; line-height: var(--cell-line); white-space: pre; }
+.skull .skull-row > span { display: inline; min-height: 0; font: inherit; line-height: inherit; }
+.skull .skull-cell-bone, .skull .skull-cell-jaw { color: #39ff78; }
+.skull .skull-cell-eye { color: #ff3545; text-shadow: 0 0 var(--glow, 4px) #ff354590, 0 0 calc(var(--glow, 4px) * 2) #b10d1a70; }
+.skull-idle .skull-cell-eye { color: #ff3545; opacity: .5; text-shadow: 0 0 var(--glow, 4px) #b10d1a60; }
+.skull-success .skull-cell-eye, .skull-error .skull-cell-eye { color: #ff3545; text-shadow: 0 0 var(--glow, 4px) #ff3545, 0 0 calc(var(--glow, 4px) * 2) #b10d1a; }
+.skull-success .skull-cell-jaw, .skull-error .skull-cell-jaw { color: #ff3545; text-shadow: 0 0 var(--glow, 4px) #b10d1a; }
+.skull-scanning.skull-animated .skull-cell-eye { animation: eye-phosphor 2.4s ease-in-out infinite; }
+.crt .skull::after, .skull-dev .skull::after { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .35; background: repeating-linear-gradient(0deg, #01090450 0 1px, transparent 1px 3px); }
+.hero-art { min-height: 360px; padding-top: 0; }
+.hero-panel .hero-wordmark { margin-top: -12px; }
+.skull-preview { height: 300px; }
+.skull-preview .skull { --cell-font: 7px; --cell-line: 5.5px; font-size: var(--cell-font); }
+@keyframes eye-phosphor { 0%, 100% { opacity: .65; } 50% { opacity: 1; } }
+@media(min-width:1600px) { .hero-art { min-height: 395px; } .hero-art .skull { --cell-font: 10px; --cell-line: 8px; font-size: var(--cell-font); } }
+@media(max-width:1150px) and (min-width:801px) { .hero-art .skull { --cell-font: 7.6px; --cell-line: 6.8px; font-size: var(--cell-font); } }
+@media(max-width:420px) { .hero-art .skull { --cell-font: 7px; --cell-line: 6.7px; font-size: var(--cell-font); } }
+@media(prefers-reduced-motion:reduce) { .skull *, .skull::after { animation: none !important; } }
+.skull-critical .skull-cell-bone,.skull-critical .skull-cell-jaw{color:#ff3545;text-shadow:0 0 var(--glow) #b10d1a}.skull-alert .skull-cell-eye{color:#ff3545}.skull-lab.skull-animated .skull-cell-eye{animation:eye-phosphor 4s ease-in-out infinite}.skull-error.skull-animated .skull-cell-eye{animation:error-eye .35s ease-out 1}.skull-success.skull-animated .skull-grid{animation:sinister-nod 1.28s ease-in-out 2}.skull-ambient-stare .skull-cell-eye{opacity:.8}.skull-disappointed .skull-cell-eye{opacity:.25}.archive-fragment{position:absolute;bottom:74px;left:14px;pointer-events:none;font-size:8px;letter-spacing:1.5px;color:#9b3545;min-height:27px}.archive-fragment small{display:block;color:#42624b;font-size:6px;opacity:.65}.archive-fragment span{display:block;margin-top:5px}.archive-fragment:has(span:empty){visibility:hidden}@keyframes sinister-nod{0%,100%{transform:translate(0)}40%{transform:translate(1px,1px)}65%{transform:translate(-1px,0)}}@keyframes error-eye{from{filter:brightness(1.5)}to{filter:brightness(1)}}

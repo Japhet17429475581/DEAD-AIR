@@ -1,0 +1,36 @@
+node_modules/
+dist/
+src-tauri/target/
+test-results/
+playwright-report/
+.npm-cache/
+*.log
+*.tsbuildinfo
+.tools/
+
+# Local verification output, packages, and generated helper binaries
+/artifacts/
+/packaging/bin/
+/src-tauri/gen/
+/target/
+
+# Credentials and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Captures and laboratory output belong outside the source tree
+*.cap
+*.pcap
+*.pcapng
+*.hc22000
+*.hccapx
+*.potfile

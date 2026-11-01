@@ -1,0 +1,19 @@
+pkgname=dead-air
+pkgver=0.3.1
+pkgrel=1
+pkgdesc='Passive wireless diagnostics workstation'
+arch=('x86_64' 'aarch64')
+license=('MIT')
+depends=('webkit2gtk-4.1' 'gtk3' 'polkit')
+optdepends=('networkmanager: Wi-Fi discovery' 'iw: adapter diagnostics' 'iproute2: adapter control' 'aircrack-ng: passive capture' 'hashcat: laboratory jobs' 'pocl: CPU OpenCL runtime')
+source=('dead-air' 'deadair-capture-helper' 'dead-air.desktop' 'dead-air.png' 'io.deadair.capture.policy' 'LICENSE')
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
+# Local build products only; this recipe does not fetch executable files.
+package() {
+  install -Dm755 "$srcdir/dead-air" "$pkgdir/usr/bin/dead-air"
+  install -Dm755 "$srcdir/deadair-capture-helper" "$pkgdir/usr/libexec/deadair-capture-helper"
+  install -Dm644 "$srcdir/io.deadair.capture.policy" "$pkgdir/usr/share/polkit-1/actions/io.deadair.capture.policy"
+  install -Dm644 "$srcdir/dead-air.desktop" "$pkgdir/usr/share/applications/dead-air.desktop"
+  install -Dm644 "$srcdir/dead-air.png" "$pkgdir/usr/share/icons/hicolor/128x128/apps/dead-air.png"
+  install -Dm644 "$srcdir/LICENSE" "$pkgdir/usr/share/licenses/dead-air/LICENSE"
+}

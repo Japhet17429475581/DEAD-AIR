@@ -1,0 +1,31 @@
+import {expect,test} from '@playwright/test';
+test('PMKID course gates the lab and computes a real match only for correct parameters',async({page})=>{
+  await page.goto('/');await page.getByRole('button',{name:/ACADEMY/}).click();
+  const module=page.getByRole('button',{name:/05 \/ PMKID:/});await module.click();
+  const lab=page.getByRole('button',{name:/03 ЛАБОРАТОРИЯ/});await expect(lab).toBeDisabled();
+  await page.getByRole('button',{name:'ТЕОРИЮ РАЗОБРАЛ → К ТЕСТУ'}).click();
+  await page.getByLabel('Нет, это может требовать взаимодействия с AP',{exact:true}).check();
+  await page.getByLabel('Кандидат для этого вектора и его параметров',{exact:true}).check();
+  await page.getByRole('button',{name:'ПРОВЕРИТЬ ТЕСТ'}).click();await expect(lab).toBeEnabled();await lab.click();
+  await expect(page.getByText('BUILT-IN VECTOR · REAL WEBCRYPTO')).toBeVisible();
+  await page.getByLabel('Подставить неправильный SSID и исследовать результат').check();
+  await page.getByRole('button',{name:'ПРОВЕРИТЬ УЧЕБНЫЕ КАНДИДАТЫ'}).click();
+  await expect(page.getByText(/^Среди выбранных кандидатов совпадение не найдено/)).toBeVisible();
+  await page.getByLabel('Подставить неправильный SSID и исследовать результат').uncheck();
+  await page.getByRole('button',{name:'ПРОВЕРИТЬ УЧЕБНЫЕ КАНДИДАТЫ'}).click();
+  await expect(page.getByText(/^Совпадение с известным учебным вектором: LabOnly-2003!/)).toBeVisible();
+  await expect(module.locator('i.done')).toHaveCount(3);
+  await page.getByRole('button',{name:/01 \/ Радиоэфир/}).click();await module.click();await expect(module.locator('i.done')).toHaveCount(3);
+});
+test('case lab explains wrong decisions, advances on correct evidence and keeps simulations labelled',async({page})=>{
+  await page.goto('/');await page.keyboard.press('0');
+  await page.getByRole('button',{name:'ТЕОРИЮ РАЗОБРАЛ → К ТЕСТУ'}).click();
+  await page.getByLabel('Только именем',{exact:true}).check();await page.getByLabel('Да, ровно 8 метров',{exact:true}).check();
+  await page.getByRole('button',{name:'ПРОВЕРИТЬ ТЕСТ'}).click();await expect(page.getByRole('button',{name:/03 ЛАБОРАТОРИЯ/})).toBeDisabled();
+  await page.getByLabel('BSSID и частотой',{exact:true}).check();await page.getByLabel('Нет, это не измерение расстояния',{exact:true}).check();
+  await page.getByRole('button',{name:'ПРОВЕРИТЬ ТЕСТ'}).click();await page.getByRole('button',{name:/03 ЛАБОРАТОРИЯ/}).click();
+  await expect(page.getByText('SIMULATION · NO RADIO I/O')).toBeVisible();
+  await page.getByRole('button',{name:'Обе AP с именем TRAINING'}).click();await expect(page.getByText(/Решение не подходит/)).toBeVisible();
+  await page.getByRole('button',{name:'02:DA:00:00:02:02 / 5180 MHz'}).click();
+  await page.getByRole('button',{name:'Сменить канал наблюдения на 5180 MHz'}).click();await expect(page.getByText('КЕЙС ПРОЙДЕН',{exact:true})).toBeVisible();
+});
