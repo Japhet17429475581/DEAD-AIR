@@ -21,6 +21,21 @@ pub struct CaptureRequest {
     #[serde(default)]
     pub allow_disconnect: bool,
 }
+fn validate_capture_adapter(adapter: &Adapter, allow_disconnect: bool) -> Result<(), String> {
+    if adapter.connected && !allow_disconnect {
+        return Err("Allow temporary Wi-Fi disconnection before using this connected card".into());
+    }
+    if !matches!(adapter.mode.as_str(), "managed" | "monitor") {
+        return Err(format!(
+            "Capture requires a managed or monitor interface, not {}",
+            adapter.mode
+        ));
+    }
+    if adapter.mode != "monitor" && !adapter.monitor_supported {
+        return Err(format!("{} / {}: iw did not report monitor support. Refresh adapters and check the driver capabilities.", adapter.name, adapter.driver));
+    }
+    Ok(())
+}
 #[derive(Default)]
 struct Data {
     status: CaptureStatus,
@@ -60,11 +75,7 @@ impl CaptureService {
             .into_iter()
             .find(|a| a.name == request.adapter)
             .ok_or("Capture interface no longer present")?;
-        if (adapter.connected && !request.allow_disconnect) || !adapter.monitor_supported {
-            return Err(
-                "Monitor support is required. To use a connected card, explicitly allow temporary disconnection.".into(),
-            );
-        }
+        validate_capture_adapter(&adapter, request.allow_disconnect)?;
         if !std::path::Path::new(HELPER).is_file() {
             return Err("Install the scoped capture helper with scripts/install-helper.sh".into());
         }
@@ -170,8 +181,16 @@ impl CaptureService {
                     diagnostic.chars().take(1000).collect::<String>()
                 ));
             }
-            if !diagnostic.trim().is_empty() && failure.is_none() {
-                failure = Some(diagnostic.chars().take(1000).collect());
+            if !diagnostic.trim().is_empty() {
+                let detail: String = diagnostic.chars().take(1000).collect();
+                if let Some(message) = &mut failure {
+                    if !message.contains(&detail) {
+                        message.push('\n');
+                        message.push_str(&detail);
+                    }
+                } else {
+                    failure = Some(detail);
+                }
             }
             let mut data = shared.lock().await;
             data.status.running = false;
@@ -217,5 +236,33 @@ impl CaptureService {
             data.status.error = None;
             data.status.status = "STOPPED / RECOVERY CHECK COMPLETED".into();
         }
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn monitor_state_is_usable_without_advertised_capability_but_does_not_bypass_consent() {
+        let mut adapter = Adapter {
+            name: "wlan0mon".into(),
+            driver: "fixture".into(),
+            phy: "phy0".into(),
+            mode: "monitor".into(),
+            frequency: Some(2437),
+            monitor_supported: false,
+            connected: false,
+            bands: vec![],
+        };
+        assert!(validate_capture_adapter(&adapter, false).is_ok());
+        adapter.connected = true;
+        assert!(validate_capture_adapter(&adapter, false).is_err());
+        assert!(validate_capture_adapter(&adapter, true).is_ok());
+        adapter.connected = false;
+        adapter.mode = "managed".into();
+        assert!(validate_capture_adapter(&adapter, false).is_err());
+        adapter.monitor_supported = true;
+        assert!(validate_capture_adapter(&adapter, false).is_ok());
+        adapter.mode = "AP".into();
+        assert!(validate_capture_adapter(&adapter, true).is_err());
     }
 }

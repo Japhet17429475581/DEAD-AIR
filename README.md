@@ -8,7 +8,7 @@
 Rust / Tauri · React / TypeScript · Phosphor green · Crimson eyes
 
 [![Linux build](https://github.com/Japhet17429475581/DEAD-AIR/actions/workflows/linux.yml/badge.svg)](https://github.com/Japhet17429475581/DEAD-AIR/actions/workflows/linux.yml)
-[![Version](https://img.shields.io/badge/version-0.3.1-39FF78?style=flat&labelColor=080d0a)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.3.2-39FF78?style=flat&labelColor=080d0a)](CHANGELOG.md)
 [![Platform](https://img.shields.io/badge/platform-Linux-39FF78?style=flat&labelColor=080d0a)](docs/BUILDING.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-39FF78?style=flat&labelColor=080d0a)](LICENSE)
 
@@ -27,6 +27,8 @@ DEAD//AIR brings real Linux wireless tools into a desktop GUI with interactive t
 LIVE mode reports native results and errors. DEMO mode is a separate, explicitly enabled source of sample data. Academy simulations are labeled and do not transmit radio frames. Use radio workflows only on networks and devices you own or have permission to assess.
 
 > **Development release:** the native backend and Linux packages are implemented. Physical Wi-Fi capture, driver transitions, MAC restoration, and reconnect recovery still need acceptance testing on real Linux hardware.
+
+**0.3.2 adapter fix:** capture now reuses the selected interface, avoiding a second virtual-interface requirement. Existing monitor interfaces are accepted and retain their original mode. Driver/collector errors are preserved in a selectable GUI panel. See [the fix and verification notes](docs/CAPTURE-TROUBLESHOOTING.md).
 
 ## Features
 

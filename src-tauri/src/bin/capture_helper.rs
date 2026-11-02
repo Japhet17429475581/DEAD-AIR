@@ -2,6 +2,7 @@
 #[cfg(target_os = "linux")]
 mod linux {
     use dead_air::{
+        capture_adapter::{interface_mode, CaptureAdapterMode, MonitorChannel},
         model::{parse_mac, valid_interface},
         packets,
     };
@@ -12,7 +13,6 @@ mod linux {
         io::{Read, Write},
         os::unix::fs::{MetadataExt, OpenOptionsExt},
         path::PathBuf,
-        process::{Command, Stdio},
         sync::{
             atomic::{AtomicBool, Ordering},
             Arc,
@@ -33,6 +33,10 @@ mod linux {
         source_managed: bool,
         #[serde(default)]
         monitor_on_source: bool,
+        #[serde(default)]
+        borrowed_monitor: bool,
+        #[serde(default)]
+        source_channel: Option<MonitorChannel>,
         #[serde(default)]
         source_connection: Option<String>,
         #[serde(default = "default_autoconnect")]
@@ -322,33 +326,17 @@ mod linux {
             .block_on(dead_air::process::output(tool, args, 6))
     }
     fn run(tool: &str, args: &[&str]) -> Result<(), String> {
-        let path = dead_air::process::executable(tool)?;
-        let mut child = Command::new(path)
+        let mut command = dead_air::process::command(tool)?;
+        command
             .args(args)
             .env_clear()
             .env("PATH", "/usr/sbin:/usr/bin:/sbin:/bin")
-            .env("LC_ALL", "C")
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .map_err(|e| e.to_string())?;
-        let deadline = Instant::now() + Duration::from_secs(4);
-        loop {
-            if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
-                return if status.success() {
-                    Ok(())
-                } else {
-                    Err(format!("{tool} failed: {status}"))
-                };
-            }
-            if Instant::now() > deadline {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(format!("{tool} timed out"));
-            }
-            std::thread::sleep(Duration::from_millis(20));
-        }
+            .env("LC_ALL", "C");
+        let operation = format!("{tool} {}", args.join(" "));
+        tokio::runtime::Runtime::new()
+            .map_err(|e| e.to_string())?
+            .block_on(dead_air::process::output_command(command, &operation, 6))
+            .map(|_| ())
     }
     fn proc_start(pid: u32) -> String {
         fs::read_to_string(format!("/proc/{pid}/stat"))
@@ -424,6 +412,9 @@ mod linux {
         fn cleanup(&self) -> Result<(), String> {
             if !self.owned.get() || !self.journal.exists() {
                 return Ok(());
+            }
+            if self.record.borrowed_monitor {
+                return self.restore_borrowed_monitor();
             }
             match index(&self.record.interface) {
                 None => (),
@@ -512,6 +503,49 @@ mod linux {
             }
             Ok(())
         }
+        fn restore_borrowed_monitor(&self) -> Result<(), String> {
+            let record = &self.record;
+            if record.interface != record.source
+                || record.ifindex != record.source_index
+                || index(&record.source) != Some(record.source_index)
+                || phy_of(&record.source)? != record.phy
+            {
+                return Err(
+                    "Borrowed monitor interface identity changed; inspect recovery journal".into(),
+                );
+            }
+            let info = output("iw", &["dev", &record.source, "info"])?;
+            if interface_mode(&info)? != CaptureAdapterMode::ExistingMonitor {
+                return Err(
+                    "Borrowed interface mode changed externally; automatic restoration refused"
+                        .into(),
+                );
+            }
+            idle_radio(&record.phy, &record.source)?;
+            if let Some(channel) = &record.source_channel {
+                let arguments = channel.arguments()?;
+                run("ip", &["link", "set", "dev", &record.source, "up"])?;
+                let mut args = vec!["dev", record.source.as_str(), "set", "freq"];
+                args.extend(arguments.iter().map(String::as_str));
+                run("iw", &args)?;
+                let restored = output("iw", &["dev", &record.source, "info"])?;
+                if MonitorChannel::from_info(&restored)?.as_ref() != Some(channel) {
+                    return Err("The driver did not restore the original monitor channel; inspect recovery journal".into());
+                }
+            }
+            run(
+                "ip",
+                &[
+                    "link",
+                    "set",
+                    "dev",
+                    &record.source,
+                    if record.source_up { "up" } else { "down" },
+                ],
+            )?;
+            dead_air::aircrack::linux::remove_runtime(&self.journal.with_extension("capture"))?;
+            fs::remove_file(&self.journal).map_err(|e| e.to_string())
+        }
         fn save(&self) -> Result<(), String> {
             let mut f = OpenOptions::new()
                 .write(true)
@@ -565,6 +599,26 @@ mod linux {
     mod tests {
         use super::*;
         #[test]
+        fn legacy_journal_keeps_original_recovery_semantics() {
+            let record: Journal = serde_json::from_value(serde_json::json!({
+                "uid":1000,"pid":1,"start":"test","interface":"da123","ifindex":3,
+                "phy":"phy0","source":"wlan0","source_index":2,"source_up":true,"source_managed":true
+            })).unwrap();
+            assert!(!record.borrowed_monitor);
+            assert!(!record.monitor_on_source);
+            assert!(record.source_channel.is_none());
+        }
+        #[test]
+        fn command_failure_preserves_operation_stderr_and_exit_status() {
+            let error = run(
+                "sh",
+                &["-c", "printf 'fixture driver busy (-16)' >&2; exit 7"],
+            )
+            .unwrap_err();
+            assert!(error.contains("fixture driver busy (-16)"), "{error}");
+            assert!(error.contains("exit status: 7"), "{error}");
+        }
+        #[test]
         fn capture_token_collision_does_not_overwrite_or_remove_existing_journal() {
             let dir = tempfile::tempdir().unwrap();
             let path = dir.path().join("existing.json");
@@ -584,6 +638,8 @@ mod linux {
                     source_up: false,
                     source_managed: false,
                     monitor_on_source: false,
+                    borrowed_monitor: false,
+                    source_channel: None,
                     source_connection: None,
                     source_autoconnect: true,
                 },
@@ -661,7 +717,8 @@ mod linux {
                 }
                 if !valid_interface(&record.interface)
                     || !(record.interface.starts_with("da")
-                        || record.monitor_on_source && record.interface == record.source)
+                        || (record.monitor_on_source || record.borrowed_monitor)
+                            && record.interface == record.source)
                     || !valid_interface(&record.source)
                 {
                     return Err("Invalid recovery record".into());
@@ -694,7 +751,8 @@ mod linux {
             let record: Journal = serde_json::from_slice(&bytes).map_err(|e| e.to_string())?;
             if record.uid != uid
                 || !(record.interface.starts_with("da")
-                    || record.monitor_on_source && record.interface == record.source)
+                    || (record.monitor_on_source || record.borrowed_monitor)
+                        && record.interface == record.source)
                 || !valid_interface(&record.interface)
                 || proc_start(record.pid) == record.start && !record.start.is_empty()
             {
@@ -745,36 +803,66 @@ mod linux {
         phy_lock
             .try_lock_exclusive()
             .map_err(|_| "This radio is already reserved by DEAD//AIR")?;
+        // Do not borrow an interface whose original managed state is still in
+        // an earlier app journal. Recovery must complete before another lease.
+        for entry in fs::read_dir(&root).map_err(|e| e.to_string())? {
+            let path = entry.map_err(|e| e.to_string())?.path();
+            if path.extension().and_then(|e| e.to_str()) != Some("json") {
+                continue;
+            }
+            let record: Journal = serde_json::from_reader(
+                OpenOptions::new()
+                    .read(true)
+                    .custom_flags(libc::O_NOFOLLOW)
+                    .open(path)
+                    .map_err(|e| e.to_string())?
+                    .take(8192),
+            )
+            .map_err(|e| format!("Inspect invalid capture recovery journal: {e}"))?;
+            if record.phy == phy {
+                return Err("This radio has an unfinished DEAD//AIR capture. Use ADAPTERS > RESTORE STALE CAPTURE INTERFACES before starting again.".into());
+            }
+        }
         idle_radio(&phy, source)?;
         let info = output("iw", &["dev", source, "info"])?;
-        if !info.lines().any(|line| line.trim() == "type managed") {
-            return Err("Select a managed Wi-Fi adapter; existing AP/mesh/monitor interfaces require restoration first".into());
-        }
-        if !exclusive && output("iw", &["dev", source, "link"])?.contains("Connected to") {
+        let borrowed_monitor = interface_mode(&info)? == CaptureAdapterMode::ExistingMonitor;
+        if !borrowed_monitor
+            && !exclusive
+            && output("iw", &["dev", source, "link"])?.contains("Connected to")
+        {
             return Err("Selected adapter has an active connection".into());
         }
-        let before = snapshot(source)?;
-        if before.state >= 40 && before.state <= 110 && before.state != 100 {
+        // Existing monitor interfaces need not be known to NetworkManager.
+        // Do not conceal a managed-card D-Bus failure with this branch.
+        let before = if borrowed_monitor {
+            None
+        } else {
+            Some(snapshot(source)?)
+        };
+        if before
+            .as_ref()
+            .is_some_and(|state| state.state >= 40 && state.state <= 110 && state.state != 100)
+        {
             return Err("Wi-Fi is changing state; wait before capture".into());
         }
-        if before.state == 100 && !exclusive {
+        if before.as_ref().is_some_and(|state| state.state == 100) && !exclusive {
             return Err("Explicit temporary-disconnection consent is required".into());
         }
-        let source_managed = before.managed;
+        let source_managed = before.as_ref().is_some_and(|state| state.managed);
         let source_flags = fs::read_to_string(format!("/sys/class/net/{source}/flags"))
             .map_err(|e| e.to_string())?;
         let source_up = u32::from_str_radix(source_flags.trim().trim_start_matches("0x"), 16)
             .map_err(|e| e.to_string())?
             & 1
             != 0;
-        let interface = if exclusive {
-            source.to_string()
+        let source_channel = if borrowed_monitor {
+            MonitorChannel::from_info(&info)?
         } else {
-            format!("da{}", &token.simple().to_string()[..10])
+            None
         };
-        if !exclusive && index(&interface).is_some() {
-            return Err("Monitor interface name collision".into());
-        }
+        // Use the selected card itself, including idle cards. Creating a
+        // second VIF can fail even when the driver supports monitor mode.
+        let interface = source.to_string();
         let stopped = Arc::new(AtomicBool::new(false));
         for signal in [libc::SIGTERM, libc::SIGINT, libc::SIGHUP] {
             signal_hook::flag::register(signal, stopped.clone()).map_err(|e| e.to_string())?;
@@ -787,42 +875,27 @@ mod linux {
                 pid: std::process::id(),
                 start: proc_start(std::process::id()),
                 interface: interface.clone(),
-                ifindex: if exclusive {
-                    index(source).ok_or("Source disappeared")?
-                } else {
-                    0
-                },
+                ifindex: index(source).ok_or("Source disappeared")?,
                 phy: phy.clone(),
                 source: source.into(),
                 source_index: index(source).ok_or("Source disappeared")?,
                 source_up,
                 source_managed,
-                monitor_on_source: exclusive,
-                source_connection: before.uuid,
-                source_autoconnect: before.autoconnect,
+                monitor_on_source: !borrowed_monitor,
+                borrowed_monitor,
+                source_channel,
+                source_connection: before.as_ref().and_then(|state| state.uuid.clone()),
+                source_autoconnect: before.as_ref().is_some_and(|state| state.autoconnect),
             },
         };
         guard.save()?;
-        if exclusive {
-            disconnect(source)?;
-        }
-        control(source, Some(false), true)?;
-        run("ip", &["link", "set", "dev", source, "down"])?;
-        if exclusive {
+        if !borrowed_monitor {
+            if exclusive {
+                disconnect(source)?;
+            }
+            control(source, Some(false), true)?;
+            run("ip", &["link", "set", "dev", source, "down"])?;
             run("iw", &["dev", source, "set", "type", "monitor"])?;
-        } else {
-            run(
-                "iw",
-                &[
-                    "phy",
-                    &phy,
-                    "interface",
-                    "add",
-                    &interface,
-                    "type",
-                    "monitor",
-                ],
-            )?;
         }
         guard.record.ifindex =
             index(&interface).ok_or("Monitor interface missing after creation")?;

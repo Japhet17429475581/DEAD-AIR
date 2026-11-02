@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.2
+
+- Fixed rejection of existing monitor interfaces, including those not represented by NetworkManager.
+- Use the selected managed interface itself for both idle and connected-card capture; no additional virtual-interface support is required. Connected cards still require disconnection consent.
+- Restore borrowed monitor channel width/centers and link state without deleting the interface or converting it to managed mode. Older app-owned recovery records retain their original behavior.
+- Block new capture when an unfinished app journal on the radio still requires recovery.
+- Preserve bounded system-command and airodump-ng stderr diagnostics, and show capture failures next to the launch controls.
+- Added adapter refresh, stale interface-selection correction, and native/browser regression coverage.
+
 ## 0.3.1
 
 - Expanded Academy to 14 modules with a dedicated deauthentication/disassociation and PMF lesson.

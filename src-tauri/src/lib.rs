@@ -1,6 +1,7 @@
 pub mod aircrack;
 pub mod broker;
 pub mod capture;
+pub mod capture_adapter;
 #[cfg(feature = "desktop")]
 mod commands;
 pub mod diagnostics;

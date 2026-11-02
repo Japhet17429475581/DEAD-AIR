@@ -43,5 +43,5 @@ export function review(network: Network) {
   ];
 }
 export function reportFor(networks: Network[], source: Source) {
-  return { application: 'DEAD//AIR', version: '0.3.1', source, generatedAt: new Date().toISOString(), identifiers: 'BSSIDs masked', networks: networks.map(n => ({ ...n, ssid: cleanSsid(n.ssid), bssid: maskBssid(n.bssid) })) };
+  return { application: 'DEAD//AIR', version: '0.3.2', source, generatedAt: new Date().toISOString(), identifiers: 'BSSIDs masked', networks: networks.map(n => ({ ...n, ssid: cleanSsid(n.ssid), bssid: maskBssid(n.bssid) })) };
 }

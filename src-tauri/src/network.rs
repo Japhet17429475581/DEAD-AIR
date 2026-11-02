@@ -230,9 +230,10 @@ pub async fn adapters() -> Result<Vec<Adapter>, String> {
                 name: name.into(),
                 driver,
                 phy: phy.clone(),
+                monitor_supported: mode == "monitor"
+                    || capabilities.lines().any(|l| l.trim() == "* monitor"),
                 mode,
                 frequency,
-                monitor_supported: capabilities.lines().any(|l| l.trim() == "* monitor"),
                 connected: link.contains("Connected to"),
                 bands,
             });

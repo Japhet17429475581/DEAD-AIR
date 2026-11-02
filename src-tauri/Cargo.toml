@@ -1,6 +1,6 @@
 [package]
 name = "dead-air"
-version = "0.3.1"
+version = "0.3.2"
 description = "DEAD//AIR wireless diagnostics workstation"
 authors = ["DEAD//AIR contributors"]
 edition = "2021"

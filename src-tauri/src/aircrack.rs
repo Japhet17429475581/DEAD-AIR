@@ -5,13 +5,14 @@ pub mod linux {
     use crate::packets::{read_pcap_record, RawFrame};
     use std::{
         fs::{self, File, OpenOptions},
-        io,
+        io::{self, Read},
         os::unix::{
             fs::{MetadataExt, OpenOptionsExt, PermissionsExt},
+            io::AsRawFd,
             process::CommandExt,
         },
         path::{Path, PathBuf},
-        process::{Child, Command, Stdio},
+        process::{Child, ChildStderr, Command, Stdio},
         time::{Duration, Instant},
     };
     pub struct Airodump {
@@ -20,6 +21,8 @@ pub mod linux {
         file: Option<File>,
         offset: u64,
         stopped: bool,
+        stderr: ChildStderr,
+        diagnostic: std::collections::VecDeque<u8>,
     }
     impl Airodump {
         pub fn start(
@@ -71,7 +74,7 @@ pub mod linux {
                 .env("TERM", "dumb")
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
-                .stderr(Stdio::null());
+                .stderr(Stdio::piped());
             unsafe {
                 command.pre_exec(|| {
                     let parent = libc::getppid();
@@ -84,19 +87,66 @@ pub mod linux {
                     Ok(())
                 });
             }
-            let child = command.spawn().map_err(|e| e.to_string())?;
+            let mut child = command.spawn().map_err(|e| e.to_string())?;
+            let stderr = child
+                .stderr
+                .take()
+                .ok_or("Missing airodump-ng diagnostics")?;
+            let fd = stderr.as_raw_fd();
+            let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+            if flags < 0 || unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } < 0
+            {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("Could not configure bounded airodump-ng diagnostics".into());
+            }
             Ok(Self {
                 child,
                 directory,
                 file: None,
                 offset: 0,
                 stopped: false,
+                stderr,
+                diagnostic: std::collections::VecDeque::new(),
             })
         }
+        fn drain_diagnostics(&mut self) {
+            let mut buffer = [0; 1024];
+            // Drain without blocking or allowing an unlimited per-poll read.
+            for _ in 0..16 {
+                match self.stderr.read(&mut buffer) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        self.diagnostic.extend(&buffer[..n]);
+                        while self.diagnostic.len() > 4096 {
+                            self.diagnostic.pop_front();
+                        }
+                    }
+                    Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+                    Err(_) => break,
+                }
+            }
+        }
         pub fn next(&mut self) -> Result<Option<RawFrame>, String> {
+            self.drain_diagnostics();
             if !self.stopped {
                 if let Some(status) = self.child.try_wait().map_err(|e| e.to_string())? {
-                    return Err(format!("airodump-ng exited unexpectedly: {status}. Verify monitor mode and frequency support."));
+                    self.stopped = true;
+                    self.drain_diagnostics();
+                    let bytes: Vec<u8> = self.diagnostic.iter().copied().collect();
+                    let detail: String = String::from_utf8_lossy(&bytes)
+                        .chars()
+                        .filter(|c| !c.is_control() || *c == '\n' || *c == '\t')
+                        .take(1500)
+                        .collect();
+                    return Err(format!(
+                        "airodump-ng exited unexpectedly: {status}. {}",
+                        if detail.trim().is_empty() {
+                            "No stderr output. Check rfkill, driver and target-frequency support."
+                        } else {
+                            detail.trim()
+                        }
+                    ));
                 }
             }
             if self.file.is_none() {
@@ -125,6 +175,7 @@ pub mod linux {
             }
             let deadline = Instant::now() + Duration::from_secs(3);
             loop {
+                self.drain_diagnostics();
                 if self.child.try_wait().map_err(|e| e.to_string())?.is_some() {
                     self.stopped = true;
                     return Ok(());

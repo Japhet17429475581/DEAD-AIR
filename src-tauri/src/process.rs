@@ -65,7 +65,7 @@ pub async fn output_command(mut cmd: Command, name: &str, seconds: u64) -> Resul
         }
         if !status.success() {
             return Err(format!(
-                "{name}: {}",
+                "{name} failed ({status}): {}",
                 String::from_utf8_lossy(if err.is_empty() { &out } else { &err })
                     .chars()
                     .take(1500)
