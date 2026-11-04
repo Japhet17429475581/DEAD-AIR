@@ -7,6 +7,7 @@ This guide covers Ubuntu, Debian, Fedora, and Arch Linux. The validated native b
 - A Linux desktop with WebKitGTK 4.1, system D-Bus, and a graphical polkit authentication agent.
 - NetworkManager for native discovery and connection management.
 - A Wi-Fi adapter and driver supporting monitor mode for passive capture. A built-in card is allowed after explicit consent to disconnect it temporarily.
+- For Academy's real virtual WPA2 lab: a kernel providing `mac80211_hwsim` and network namespaces. No physical Wi-Fi adapter is required for this lab.
 - Node.js 22.12+ and Rust for development. The bootstrap script can install missing toolchains.
 
 The GUI must run as a regular user. Install the helper and polkit policy through the application package or the developer helper installer.
@@ -40,6 +41,8 @@ Open the generated DEB/RPM using your distribution's package installer. On Arch,
 The package installs the helper at `/usr/libexec/deadair-capture-helper` and its policy under `/usr/share/polkit-1/actions/`. The application inventories runtime dependencies on startup. Review the list and choose **INSTALL DEPENDENCIES** to install missing tools after system authorization. **INSTALL CPU RUNTIME** can install PoCL for Hashcat. GPU drivers and wordlists are not fetched.
 
 The scoped daemon starts on demand and receives authorization for a working session. It does not store an administrator password. Package-manager locks, missing services, canceled authorization, and network failures are reported as errors.
+
+Academy lesson 15 has a separate **INSTALL LAB TOOLS** profile for `hostapd`, `wpa_supplicant`, and the remaining virtual-lab tools on all four distributions. Its preflight checks the running kernel's hwsim module; the application does not silently replace the kernel. See [virtual-lab requirements, architecture and QEMU integration test](VIRTUAL-LABS.md).
 
 Packages built on a newer distribution can require newer glibc or system libraries. Do not assume a Debian-built binary is compatible with every Linux distribution. AppImage and Windows/macOS native radio backends are not currently provided.
 

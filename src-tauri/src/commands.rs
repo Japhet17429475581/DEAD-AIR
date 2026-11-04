@@ -21,6 +21,7 @@ pub struct Backend {
     panic_active: AtomicBool,
     capture: Mutex<CaptureService>,
     lab: Mutex<LabService>,
+    virtual_networks: Mutex<crate::virtual_lab::VirtualLabService>,
     operation: Mutex<()>,
     scan_generation: Arc<AtomicU64>,
     last_scan: Mutex<Option<Instant>>,
@@ -34,6 +35,7 @@ impl Backend {
             panic_active: AtomicBool::new(false),
             capture: Mutex::new(CaptureService::default()),
             lab: Mutex::new(LabService::default()),
+            virtual_networks: Mutex::new(crate::virtual_lab::VirtualLabService::default()),
             operation: Mutex::new(()),
             scan_generation: Arc::new(AtomicU64::new(0)),
             last_scan: Mutex::new(None),
@@ -45,6 +47,7 @@ impl Backend {
             return Err("PANIC cleanup is pending; use its retry action before closing".into());
         }
         let _op = self.operation.lock().await;
+        self.virtual_networks.lock().await.stop().await?;
         self.scan_generation.fetch_add(1, Ordering::SeqCst);
         let status = self.capture.lock().await.stop().await?;
         self.lab.lock().await.stop().await?;
@@ -63,6 +66,7 @@ impl Backend {
         }
         self.capture.lock().await.clear().await?;
         self.lab.lock().await.clear().await?;
+        self.virtual_networks.lock().await.clear().await?;
         self.latest.lock().await.clear();
         crate::privilege::shutdown().await?;
         Ok(())
@@ -154,6 +158,11 @@ pub async fn capture_start(
 ) -> Result<CaptureStatus, String> {
     let _op = state.operation.lock().await;
     state.ready()?;
+    if state.virtual_networks.lock().await.status().await.running {
+        return Err(
+            "Stop the virtual network lab before starting physical-radio observation".into(),
+        );
+    }
     state.session.lock().await.active()?;
     if !state
         .latest
@@ -242,6 +251,7 @@ pub async fn install_dependencies(
     state.ready()?;
     if state.capture.lock().await.status().await.running
         || state.lab.lock().await.status().await.running
+        || state.virtual_networks.lock().await.status().await.running
     {
         return Err("Stop jobs before installing dependencies".into());
     }
@@ -312,6 +322,7 @@ pub async fn panic_cleanup(
     state.scan_generation.fetch_add(1, Ordering::SeqCst);
     let _op=tokio::time::timeout(std::time::Duration::from_secs(30),state.operation.lock()).await.map_err(|_|"An operation is still finishing (possibly a system installation). PANIC did not delete data; retry when it finishes.")?;
     let capture = state.capture.lock().await.stop().await;
+    let virtual_networks = state.virtual_networks.lock().await.stop().await;
     let lab = state.lab.lock().await.stop().await;
     let mac = state.mac.lock().await.stop().await;
     state.latest.lock().await.clear();
@@ -323,6 +334,8 @@ pub async fn panic_cleanup(
     capture?;
     lab?;
     mac?;
+    virtual_networks?;
+    state.virtual_networks.lock().await.clear().await?;
     state.capture.lock().await.clear().await?;
     state.lab.lock().await.clear().await?;
     let sessions = state.session.clone();
@@ -371,4 +384,74 @@ pub async fn open_reference(url: String) -> Result<(), String> {
         let _ = child.wait().await;
     });
     Ok(())
+}
+
+#[tauri::command]
+pub async fn virtual_lab_check() -> crate::virtual_lab::Capabilities {
+    crate::virtual_lab::capabilities().await
+}
+#[tauri::command]
+pub async fn virtual_lab_status(
+    state: State<'_, Backend>,
+) -> Result<crate::virtual_lab::VirtualStatus, String> {
+    Ok(state.virtual_networks.lock().await.status().await)
+}
+#[tauri::command]
+pub async fn virtual_lab_start(
+    state: State<'_, Backend>,
+    lab_id: String,
+    authorized: bool,
+) -> Result<crate::virtual_lab::VirtualStatus, String> {
+    let _op = state.operation.lock().await;
+    state.ready()?;
+    if state.capture.lock().await.status().await.running
+        || state.mac.lock().await.status().active
+        || state.lab.lock().await.status().await.running
+    {
+        return Err("Stop physical capture, MAC leases and compute jobs before starting the virtual network lab".into());
+    }
+    state
+        .virtual_networks
+        .lock()
+        .await
+        .start(&lab_id, authorized)
+        .await
+}
+#[tauri::command]
+pub async fn virtual_lab_action(
+    state: State<'_, Backend>,
+    action: String,
+) -> Result<crate::virtual_lab::VirtualStatus, String> {
+    let _op = state.operation.lock().await;
+    state.ready()?;
+    state.virtual_networks.lock().await.action(&action).await
+}
+#[tauri::command]
+pub async fn virtual_lab_stop(
+    state: State<'_, Backend>,
+) -> Result<crate::virtual_lab::VirtualStatus, String> {
+    let _op = state.operation.lock().await;
+    state.virtual_networks.lock().await.stop().await
+}
+#[tauri::command]
+pub async fn virtual_lab_recover(state: State<'_, Backend>) -> Result<String, String> {
+    let _op = state.operation.lock().await;
+    state.ready()?;
+    if state.virtual_networks.lock().await.status().await.running {
+        return Err("Stop the active virtual lab before recovery".into());
+    }
+    let result = crate::privilege::output(&["virtual-recover"], 45).await?;
+    state.virtual_networks.lock().await.recovered().await;
+    Ok(result)
+}
+#[tauri::command]
+pub async fn virtual_lab_export(state: State<'_, Backend>) -> Result<String, String> {
+    let _op = state.operation.lock().await;
+    state.ready()?;
+    let bytes = state.virtual_networks.lock().await.export().await?;
+    state
+        .session
+        .lock()
+        .await
+        .write("virtual-wpa2", "pcapng", &bytes)
 }

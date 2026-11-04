@@ -21,7 +21,9 @@ test('all four rendered poses preserve grid size and visible cell alignment', as
 test('laugh actually opens and closes without moving its bounding box', async ({ page }) => {
   const time = new Date('2026-10-29T12:00:00Z');
   await page.clock.install({ time });
-  await page.clock.pauseAt(time);
+  // Pause ahead of installation time: the protocol round-trip can advance the
+  // clock while a release build competes for CPU on the test host.
+  await page.clock.pauseAt(new Date(time.getTime() + 60_000));
   await page.goto('/?skull-preview=1');
   const skull = page.locator('.skull-live-stage .skull');
   await page.getByRole('button', { name: 'REPLAY STATE' }).click();
@@ -70,7 +72,7 @@ test('system reduced motion freezes the laugh and state controls remain usable',
 
 test('hidden tabs pause animation rather than burning through the laugh', async ({ page }) => {
   const time = new Date('2026-10-29T12:00:00Z');
-  await page.clock.install({ time }); await page.clock.pauseAt(time);
+  await page.clock.install({ time }); await page.clock.pauseAt(new Date(time.getTime() + 60_000));
   await page.goto('/?skull-preview=1');
   const skull = page.locator('.skull-live-stage .skull');
   await page.getByRole('button', { name: 'REPLAY STATE' }).click();

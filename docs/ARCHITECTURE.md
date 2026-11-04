@@ -1,5 +1,7 @@
 # Architecture and data handling
 
+Version 0.4.0 adds a separate [Rust virtual WLAN runtime](VIRTUAL-LABS.md): owned hwsim radios, anonymous namespaces, actual hostapd/supplicant evidence, bounded recording and scoped recovery. It reuses the broker, packet parser and session exporter. The existing physical-radio workflows described below remain separate.
+
 Version 0.3.2 supersedes the secondary-interface description below: capture uses the selected managed card itself, or borrows an existing monitor interface and restores its original channel/link state. See [adapter handling and diagnostics](CAPTURE-TROUBLESHOOTING.md). Physical driver acceptance remains outstanding.
 
 Version 0.2.0 adds a per-working-session privileged broker, MAC leases, PANIC/shred and verified tmpfs storage. The [0.2.0 architecture and limitations](PRIVACY.md) supersede older statements below about elevation per operation and disk-backed Hashcat requirements: RAM SESSION now supports a tmpfs Hashcat workspace.

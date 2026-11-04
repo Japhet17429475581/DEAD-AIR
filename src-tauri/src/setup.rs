@@ -18,7 +18,7 @@ pub fn distro_plan(
         packages.push("hashcat".into());
         return Ok((id, manager, packages));
     }
-    if !matches!(profile, "wireless" | "hashcat" | "cpu") {
+    if !matches!(profile, "wireless" | "hashcat" | "cpu" | "virtual") {
         return Err("Unknown dependency profile".into());
     }
     let id = os_release
@@ -28,6 +28,9 @@ pub fn distro_plan(
         .trim_matches('"')
         .to_string();
     let (manager,packages)=match(id.as_str(),profile){
+        ("ubuntu"|"debian","virtual")=>("apt-get",vec!["hostapd","wpasupplicant","iw","iproute2","aircrack-ng","iputils-ping","kmod"]),
+        ("fedora","virtual")=>("dnf",vec!["hostapd","wpa_supplicant","iw","iproute","aircrack-ng","iputils","kmod"]),
+        ("arch","virtual")=>("pacman",vec!["hostapd","wpa_supplicant","iw","iproute2","aircrack-ng","iputils","kmod"]),
         ("ubuntu"|"debian","wireless")=>("apt-get",vec!["network-manager","iw","iproute2","aircrack-ng","ethtool","pciutils","usbutils","kmod","coreutils","xdg-utils"]),
         ("fedora","wireless")=>("dnf",vec!["NetworkManager-wifi","iw","iproute","aircrack-ng","ethtool","pciutils","usbutils","kmod","coreutils","xdg-utils"]),
         ("arch","wireless")=>("pacman",vec!["networkmanager","iw","iproute2","aircrack-ng","ethtool","pciutils","usbutils","kmod","coreutils","xdg-utils"]),
@@ -46,6 +49,15 @@ pub fn plan(profile: &str) -> Result<SetupPlan, String> {
         .map_err(|_| "Dependency installation requires Linux")?;
     let (distro, manager, packages) = distro_plan(&os, profile)?;
     let binaries = match profile {
+        "virtual" => vec![
+            "hostapd",
+            "wpa_supplicant",
+            "iw",
+            "ip",
+            "airodump-ng",
+            "ping",
+            "modprobe",
+        ],
         "wireless" => vec![
             "nmcli",
             "iw",
@@ -187,6 +199,23 @@ mod tests {
                 distro_plan(&format!("ID={id}"), "hashcat").unwrap().2,
                 vec!["hashcat"]
             );
+        }
+    }
+    #[test]
+    fn virtual_tools_use_explicit_distribution_packages_without_kernel_replacement() {
+        for (id, supplicant) in [
+            ("ubuntu", "wpasupplicant"),
+            ("debian", "wpasupplicant"),
+            ("fedora", "wpa_supplicant"),
+            ("arch", "wpa_supplicant"),
+        ] {
+            let packages = distro_plan(&format!("ID={id}"), "virtual").unwrap().2;
+            assert!(packages.contains(&supplicant.to_string()));
+            assert!(packages.contains(&"hostapd".into()));
+            assert!(packages.contains(&"aircrack-ng".into()));
+            assert!(!packages
+                .iter()
+                .any(|p| p.starts_with("linux-") || p.starts_with("kernel")));
         }
     }
 }

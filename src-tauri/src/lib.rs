@@ -17,6 +17,7 @@ pub mod process;
 pub mod sessions;
 pub mod setup;
 pub mod storage;
+pub mod virtual_lab;
 
 #[cfg(feature = "desktop")]
 pub fn run() {
@@ -34,6 +35,13 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::open_reference,
+            commands::virtual_lab_check,
+            commands::virtual_lab_status,
+            commands::virtual_lab_start,
+            commands::virtual_lab_action,
+            commands::virtual_lab_stop,
+            commands::virtual_lab_recover,
+            commands::virtual_lab_export,
             commands::privileged_status,
             commands::privileged_authorize,
             commands::mac_status,

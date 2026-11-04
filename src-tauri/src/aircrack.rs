@@ -26,6 +26,9 @@ pub mod linux {
         records_read: u64,
     }
     impl Airodump {
+        pub fn pid(&self) -> u32 {
+            self.child.id()
+        }
         pub fn start(
             directory: PathBuf,
             interface: &str,

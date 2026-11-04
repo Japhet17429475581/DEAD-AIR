@@ -30,10 +30,20 @@ pub mod linux {
             return false;
         }
         match args.first().map(String::as_str) {
-            Some("adapter-report" | "recover-owned" | "mac-recover") => args.len() == 1,
+            Some("adapter-report" | "recover-owned" | "mac-recover" | "virtual-recover") => {
+                args.len() == 1
+            }
+            Some("virtual-lab") => {
+                args.len() == 3
+                    && args[1] == crate::virtual_lab::LAB_ID
+                    && uuid::Uuid::parse_str(&args[2]).is_ok()
+            }
             Some("install-dependencies") => {
                 args.len() == 2
-                    && matches!(args[1].as_str(), "all" | "wireless" | "hashcat" | "cpu")
+                    && matches!(
+                        args[1].as_str(),
+                        "all" | "wireless" | "hashcat" | "cpu" | "virtual"
+                    )
             }
             Some("capture") => {
                 (args.len() == 5
@@ -312,6 +322,26 @@ pub mod linux {
     #[cfg(test)]
     mod tests {
         use super::*;
+        #[test]
+        fn virtual_lab_only_accepts_a_fixed_scenario_and_uuid() {
+            let token = uuid::Uuid::new_v4().to_string();
+            assert!(allowed(&[
+                "virtual-lab".into(),
+                "wpa2-basics".into(),
+                token.clone()
+            ]));
+            assert!(allowed(&["virtual-recover".into()]));
+            for args in [
+                vec!["virtual-lab", "/tmp/config", &token],
+                vec!["virtual-lab", "wpa2-basics", "../path"],
+                vec!["virtual-lab", "wpa2-basics", &token, "wlan0"],
+                vec!["virtual-recover", "1000"],
+            ] {
+                assert!(!allowed(
+                    &args.into_iter().map(String::from).collect::<Vec<_>>()
+                ));
+            }
+        }
         #[test]
         fn mac_connection_consent_is_a_fixed_optional_flag() {
             let mut args = vec![

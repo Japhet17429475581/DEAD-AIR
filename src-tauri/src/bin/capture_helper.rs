@@ -714,6 +714,14 @@ mod linux {
         if !meta.is_dir() || meta.uid() != 0 || meta.mode() & 0o077 != 0 {
             return Err("Unsafe helper runtime directory".into());
         }
+        if args.len() == 4 && args[1] == "virtual-lab" {
+            return dead_air::virtual_lab::linux::run_lab(uid, &args[2], &args[3]);
+        }
+        if args.len() == 2 && args[1] == "virtual-recover" {
+            let count = dead_air::virtual_lab::linux::recover(uid)?;
+            println!("Recovered {count} owned virtual lab runtime(s).");
+            return Ok(());
+        }
         if (args.len() == 5 || args.len() == 6) && args[1] == "mac-profile" {
             let consent = match args.get(5).map(String::as_str) {
                 None | Some("dedicated") => false,

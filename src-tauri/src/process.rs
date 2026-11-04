@@ -2,7 +2,11 @@ use std::{path::PathBuf, process::Stdio, time::Duration};
 use tokio::{io::AsyncReadExt, process::Command};
 
 pub fn executable(name: &str) -> Result<PathBuf, String> {
-    if !name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-') {
+    if name.is_empty()
+        || !name
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_'))
+    {
         return Err("Invalid executable name".into());
     }
     for directory in ["/usr/bin", "/usr/sbin", "/bin", "/sbin"] {

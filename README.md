@@ -5,26 +5,35 @@
 ### The air remembers.
 
 **A Linux Wi-Fi diagnostics workstation and learning lab.**<br>
-Rust / Tauri · React / TypeScript · Phosphor green · Crimson eyes
+Rust / Tauri · React / TypeScript · Calm crimson / Phosphor green
 
 [![Linux build](https://github.com/Japhet17429475581/DEAD-AIR/actions/workflows/linux.yml/badge.svg)](https://github.com/Japhet17429475581/DEAD-AIR/actions/workflows/linux.yml)
-[![Version](https://img.shields.io/badge/version-0.3.3-39FF78?style=flat&labelColor=080d0a)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.4.0-bc7873?style=flat&labelColor=080d0a)](CHANGELOG.md)
 [![Platform](https://img.shields.io/badge/platform-Linux-39FF78?style=flat&labelColor=080d0a)](docs/BUILDING.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-39FF78?style=flat&labelColor=080d0a)](LICENSE)
 
 [Features](#features) · [Get started](#get-started) · [Academy](#academy) · [Build](docs/BUILDING.md) · [Verification](#verification-and-current-limits)
 
-![DEAD//AIR overview with the animated ASCII skull and CRT panels](docs/assets/overview.png)
+![DEAD//AIR calm crimson theme with the animated ASCII skull](docs/assets/overview.png)
 
-*Version 0.3.1 browser preview. Native diagnostics are unavailable in the browser; no radio results are fabricated.*
+*Version 0.4.0 browser preview in the default calm theme. Native diagnostics require Linux; no radio results are fabricated.*
 
 </div>
 
-DEAD//AIR brings real Linux wireless tools into a desktop GUI with interactive tables, process output, explicit storage policies, and an integrated Academy. Its interface borrows from old CRT workstations: deep black, phosphor green, restrained distortion, and a frame-animated ASCII skull that reacts to application events.
+<details>
+<summary>Optional phosphor-green CRT theme</summary>
+
+![The original phosphor-green CRT theme remains selectable](docs/assets/overview-phosphor.png)
+
+</details>
+
+DEAD//AIR brings real Linux wireless tools into a desktop GUI with interactive tables, process output, explicit storage policies, and an integrated Academy. Its interface borrows from old CRT workstations: deep black, restrained distortion, and a frame-animated ASCII skull. Calm crimson is the default theme, with neutral text, muted red accents and bloom/scanlines disabled. The original phosphor-green CRT theme remains available in **SETTINGS → Color theme**.
 
 **Forbidden software atmosphere. Professional software behavior.**
 
 LIVE mode reports native results and errors. DEMO mode is a separate, explicitly enabled source of sample data. Academy simulations are labeled and do not transmit radio frames. Use radio workflows only on networks and devices you own or have permission to assess.
+
+**0.4.0 real virtual lab:** create an isolated WPA2 AP, client and observer directly from Academy. The new Rust runtime uses `mac80211_hwsim`, `hostapd` and `wpa_supplicant`; completion requires actual scan, association, M1–M4 and IP connectivity. No physical adapter is needed. See [architecture, Linux requirements and test instructions](docs/VIRTUAL-LABS.md).
 
 > **Development release:** the native backend and Linux packages are implemented. Physical Wi-Fi capture, driver transitions, MAC restoration, and reconnect recovery still need acceptance testing on real Linux hardware.
 
@@ -43,7 +52,8 @@ LIVE mode reports native results and errors. DEMO mode is a separate, explicitly
 | **Sessions** | Memory-only, verified tmpfs, temporary, and persistent storage; private session directories and scoped cleanup. |
 | **Privilege separation** | Regular-user GUI and a scoped on-demand daemon, authorized through polkit once per working session. No administrator password storage or arbitrary shell interface. |
 | **Dependency setup** | Startup inventory and GUI installation of missing tools from configured distribution repositories after review and system authorization. |
-| **Academy** | 14 modules with theory, quizzes, guided cases, a real WebCrypto PMKID teaching vector, and a simulated deauth/PMF state lab. |
+| **Academy** | 15 modules with theory, quizzes, guided cases, a WebCrypto PMKID teaching vector, an offline deauth/PMF model, and a real kernel-backed WPA2 lab. |
+| **Virtual WLAN** | Owned hwsim radios in isolated network namespaces, actual AP/client states, captured EAPOL, real connectivity checks, timeout, cleanup and crash recovery. |
 | **CRT character** | Fixed-grid ASCII artwork, independently animated jaw, event reactions, optional audio, and reduced-motion support. |
 
 NetworkManager discovery can send ordinary probe requests. The separate passive capture workflow waits for naturally occurring traffic and does not force clients to reconnect. EAPOL correlation is **not cryptographic handshake verification**.
@@ -93,7 +103,9 @@ Most operational UI labels are English. Academy lessons are currently written in
 
 The PMKID sandbox computes an explicit teaching vector with WebCrypto. The deauth lab is an offline station-state model with four cases: disassociation, unprotected deauthentication, PMF rejection, and a legitimate protected teardown. **There is no real deauth transmission feature.**
 
-Lessons link to primary documentation. WifiForge is credited as an external virtual-lab reference; DEAD//AIR's included cases are its own teaching components. Progress lives in memory and can be explicitly exported/imported.
+Lesson **15 / Real virtual WPA2 network** runs a real Linux Wi-Fi protocol experiment without a physical adapter. Use **REAL VIRTUAL NETWORK LAB** in Academy, pass its theory/quiz, then install lab tools and create the topology. Browser/DEMO mode cannot launch this runtime. The existing guided cases remain explicitly labeled simulations.
+
+Lessons link to primary documentation. WifiForge informed the scenario/lifecycle organization; its Python backend is not included. DEAD//AIR implements its own Rust/netlink runtime. Read the [architectural comparison and roadmap](docs/VIRTUAL-LABS.md). Progress lives in memory and can be explicitly exported/imported.
 
 <details>
 <summary><strong>View the deauth / PMF teaching lab</strong></summary>
@@ -138,10 +150,15 @@ Aircrack-ng and Hashcat are separately installed distribution tools. Their sourc
 
 Recorded verification for **0.3.1** includes 23 frontend unit tests, three Academy browser scenarios, a release Linux build, DEB installation in a Debian container, and RPM generation. Earlier milestones also exercised real Hashcat with PoCL, isolated D-Bus integration, native WebKitGTK rendering, storage cleanup, and daemon authorization boundaries. These are development checks, not an independent security audit.
 
+For **0.4.0**, the real virtual-lab integration passed in QEMU with Debian's **6.1.0-54-amd64** kernel: actual scan, WPA2 client/AP authorization, observed M1–M4, ping, normal cleanup, repeated creation and recovery after forced worker death. A foreign hwsim AP was isolated and its existing radios preserved. This validates the software-radio workflow, independently of browser IPC fixtures. See [the reproducible harness](docs/VIRTUAL-LABS.md#reproducing-the-real-integration-test).
+
+The current [verification record](docs/VERIFICATION-0.4.0.md) lists 23 frontend unit tests, 53 native tests, GUI checks, release installation and the boundaries still requiring desktop/hardware acceptance.
+
 Still requiring validation:
 
 - Physical discovery/capture, built-in Wi-Fi disconnection/reconnect, monitor-mode restoration, MAC changes, and USB removal across drivers.
 - Desktop polkit dialogs and end-to-end dependency installation on all target distributions.
+- Virtual-lab operation on additional kernels/distributions, desktop confinement policies and concurrent third-party hwsim workloads.
 - Fedora RPM installation, Arch packaging/install, Wayland behavior, and GPU runtimes.
 
 Current scope limits: no captured wireless-hash import/cracking workflow; no active PMKID elicitation; Kismet integration is limited to a local status/authentication check. MAC vendor profiles change an address, not the operating system or complete device fingerprint. Native radio operations target Linux; Windows/macOS can be used for frontend work.
@@ -158,6 +175,7 @@ cargo test --manifest-path src-tauri/Cargo.toml --locked --no-default-features
 Browser tests use Google Chrome. Native checks require Linux prerequisites. For the isolated development skull preview, open **http://127.0.0.1:1420/?skull-preview=1**; it is excluded from production routes.
 
 - [Build, install, test, and hardware acceptance — English](docs/BUILDING.md)
+- [Real virtual labs: Rust architecture, WifiForge comparison, setup and roadmap](docs/VIRTUAL-LABS.md)
 - [Contributing](CONTRIBUTING.md) · [Changelog](CHANGELOG.md)
 - Detailed implementation notes **in Russian**: [Linux setup](docs/LINUX.md), [architecture](docs/ARCHITECTURE.md), [storage / daemon / PANIC](docs/PRIVACY.md), [Academy](docs/ACADEMY.md), [deauth model](docs/DEAUTH.md), [skull animation](docs/SKULL.md).
 - Historical [0.1.0 verification report](docs/VERIFICATION.md). Local artifact references in historical reports are not included in this source checkout.

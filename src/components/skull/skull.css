@@ -15,8 +15,8 @@
   width: 72ch;
   height: calc(48 * var(--cell-line));
   min-height: 0;
-  color: #39ff78;
-  text-shadow: 0 0 var(--glow, 4px) #39ff7860;
+  color: rgb(var(--rgb-39ff78));
+  text-shadow: 0 0 var(--glow, 4px) rgba(var(--rgb-39ff78),0.37647);
   user-select: none;
   contain: layout style;
   isolation: isolate;
@@ -27,13 +27,13 @@
 .skull .skull-grid { margin: 0; padding: 0; border: 0; width: 100%; height: 100%; overflow: hidden; white-space: pre; font: inherit; letter-spacing: inherit; line-height: inherit; }
 .skull .skull-row { display: block; height: var(--cell-line); min-height: 0; line-height: var(--cell-line); white-space: pre; }
 .skull .skull-row > span { display: inline; min-height: 0; font: inherit; line-height: inherit; }
-.skull .skull-cell-bone, .skull .skull-cell-jaw { color: #39ff78; }
-.skull .skull-cell-eye { color: #ff3545; text-shadow: 0 0 var(--glow, 4px) #ff354590, 0 0 calc(var(--glow, 4px) * 2) #b10d1a70; }
-.skull-idle .skull-cell-eye { color: #ff3545; opacity: .5; text-shadow: 0 0 var(--glow, 4px) #b10d1a60; }
-.skull-success .skull-cell-eye, .skull-error .skull-cell-eye { color: #ff3545; text-shadow: 0 0 var(--glow, 4px) #ff3545, 0 0 calc(var(--glow, 4px) * 2) #b10d1a; }
-.skull-success .skull-cell-jaw, .skull-error .skull-cell-jaw { color: #ff3545; text-shadow: 0 0 var(--glow, 4px) #b10d1a; }
+.skull .skull-cell-bone, .skull .skull-cell-jaw { color: rgb(var(--rgb-39ff78)); }
+.skull .skull-cell-eye { color: rgb(var(--rgb-ff3545)); text-shadow: 0 0 var(--glow, 4px) rgba(var(--rgb-ff3545),0.56471), 0 0 calc(var(--glow, 4px) * 2) rgba(var(--rgb-b10d1a),0.43922); }
+.skull-idle .skull-cell-eye { color: rgb(var(--rgb-ff3545)); opacity: .5; text-shadow: 0 0 var(--glow, 4px) rgba(var(--rgb-b10d1a),0.37647); }
+.skull-success .skull-cell-eye, .skull-error .skull-cell-eye { color: rgb(var(--rgb-ff3545)); text-shadow: 0 0 var(--glow, 4px) rgb(var(--rgb-ff3545)), 0 0 calc(var(--glow, 4px) * 2) rgb(var(--rgb-b10d1a)); }
+.skull-success .skull-cell-jaw, .skull-error .skull-cell-jaw { color: rgb(var(--rgb-ff3545)); text-shadow: 0 0 var(--glow, 4px) rgb(var(--rgb-b10d1a)); }
 .skull-scanning.skull-animated .skull-cell-eye { animation: eye-phosphor 2.4s ease-in-out infinite; }
-.crt .skull::after, .skull-dev .skull::after { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .35; background: repeating-linear-gradient(0deg, #01090450 0 1px, transparent 1px 3px); }
+.crt .skull::after, .skull-dev .skull::after { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .35; background: repeating-linear-gradient(0deg, rgba(var(--rgb-010904),0.31373) 0 1px, transparent 1px 3px); }
 .hero-art { min-height: 360px; padding-top: 0; }
 .hero-panel .hero-wordmark { margin-top: -12px; }
 .skull-preview { height: 300px; }
@@ -43,4 +43,4 @@
 @media(max-width:1150px) and (min-width:801px) { .hero-art .skull { --cell-font: 7.6px; --cell-line: 6.8px; font-size: var(--cell-font); } }
 @media(max-width:420px) { .hero-art .skull { --cell-font: 7px; --cell-line: 6.7px; font-size: var(--cell-font); } }
 @media(prefers-reduced-motion:reduce) { .skull *, .skull::after { animation: none !important; } }
-.skull-critical .skull-cell-bone,.skull-critical .skull-cell-jaw{color:#ff3545;text-shadow:0 0 var(--glow) #b10d1a}.skull-alert .skull-cell-eye{color:#ff3545}.skull-lab.skull-animated .skull-cell-eye{animation:eye-phosphor 4s ease-in-out infinite}.skull-error.skull-animated .skull-cell-eye{animation:error-eye .35s ease-out 1}.skull-success.skull-animated .skull-grid{animation:sinister-nod 1.28s ease-in-out 2}.skull-ambient-stare .skull-cell-eye{opacity:.8}.skull-disappointed .skull-cell-eye{opacity:.25}.archive-fragment{position:absolute;bottom:74px;left:14px;pointer-events:none;font-size:8px;letter-spacing:1.5px;color:#9b3545;min-height:27px}.archive-fragment small{display:block;color:#42624b;font-size:6px;opacity:.65}.archive-fragment span{display:block;margin-top:5px}.archive-fragment:has(span:empty){visibility:hidden}@keyframes sinister-nod{0%,100%{transform:translate(0)}40%{transform:translate(1px,1px)}65%{transform:translate(-1px,0)}}@keyframes error-eye{from{filter:brightness(1.5)}to{filter:brightness(1)}}
+.skull-critical .skull-cell-bone,.skull-critical .skull-cell-jaw{color:rgb(var(--rgb-ff3545));text-shadow:0 0 var(--glow) rgb(var(--rgb-b10d1a))}.skull-alert .skull-cell-eye{color:rgb(var(--rgb-ff3545))}.skull-lab.skull-animated .skull-cell-eye{animation:eye-phosphor 4s ease-in-out infinite}.skull-error.skull-animated .skull-cell-eye{animation:error-eye .35s ease-out 1}.skull-success.skull-animated .skull-grid{animation:sinister-nod 1.28s ease-in-out 2}.skull-ambient-stare .skull-cell-eye{opacity:.8}.skull-disappointed .skull-cell-eye{opacity:.25}.archive-fragment{position:absolute;bottom:74px;left:14px;pointer-events:none;font-size:8px;letter-spacing:1.5px;color:rgb(var(--rgb-9b3545));min-height:27px}.archive-fragment small{display:block;color:rgb(var(--rgb-42624b));font-size:6px;opacity:.65}.archive-fragment span{display:block;margin-top:5px}.archive-fragment:has(span:empty){visibility:hidden}@keyframes sinister-nod{0%,100%{transform:translate(0)}40%{transform:translate(1px,1px)}65%{transform:translate(-1px,0)}}@keyframes error-eye{from{filter:brightness(1.5)}to{filter:brightness(1)}}

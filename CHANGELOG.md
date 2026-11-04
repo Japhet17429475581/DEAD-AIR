@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.4.0
+
+- Add a native Rust virtual-WLAN runtime and Academy lesson 15: isolated hwsim AP, client and observer, real WPA2 association, captured M1–M4 and client-to-AP ping. Completion requires observed evidence.
+- Create radios through generic netlink with socket-scoped leases, separate client IP namespace, no uplink and no physical-interface input. Add bounded processes/capture/logs, a ten-minute lifetime, owned cleanup and stale-worker recovery.
+- Integrate virtual-lab shutdown with session close, window close and PANIC; allow explicit retained-frame PCAPNG export to a file-capable audit session.
+- Add a separate GUI dependency profile for Ubuntu, Debian, Fedora and Arch. Report missing kernel support instead of substituting sample results.
+- Make calm crimson the default theme, with neutral text, muted accents and bloom/scanlines disabled. Retain the original phosphor-green CRT theme in Settings.
+- Document the pinned WifiForge architecture review, independent Rust implementation and scenario roadmap. Add a real QEMU/Linux integration harness alongside GUI IPC checks.
+
 ## 0.3.3
 
 - Replaced unconditional waiting-for-client status with evidence-based receiver health, elapsed/remaining time, raw PCAP records, file size, actual frequency, beacons and EAPOL counters.

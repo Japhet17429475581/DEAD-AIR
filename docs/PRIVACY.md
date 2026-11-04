@@ -1,5 +1,7 @@
 # DEAD//AIR 0.2.0: daemon, MAC, PANIC и RAM
 
+Version 0.4.0 adds a separately authorized virtual-lab staging area on verified `/run` tmpfs. Its processes and radios are stopped by session/window close and PANIC; bounded retained frames are cleared with backend cleanup. Explicit PCAPNG export uses the active audit session's policy. See [virtual-lab retention and crash recovery](VIRTUAL-LABS.md#retention-and-cleanup).
+
 Version 0.3.3 adds consent-based disconnection for MAC leases on connected managed cards, including built-in cards. NetworkManager remains released until original-MAC/profile restoration. This supersedes the idle-only MAC restriction below. See [current receive/MAC behavior](RECEIVER-HEALTH.md).
 
 В 0.3.0 добавлены [встроенный адаптер и Academy](ACADEMY.md). Описание ниже сохраняет сведения о функциях 0.2.0; отдельный отключённый адаптер теперь не обязателен при явно выбранном режиме временного отключения.
