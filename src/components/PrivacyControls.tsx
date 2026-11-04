@@ -57,20 +57,23 @@ const emptyMac: MacStatus = {active:false,adapter:'',profile:'',original:'',assi
 export function MacControls({adapters, demo, captureRunning, onChanged}: {adapters:Adapter[]; demo:boolean; captureRunning:boolean; onChanged:()=>void}) {
   const [adapter, setAdapter] = useState('');
   const [profile, setProfile] = useState('private');
+  const [allowDisconnect,setAllowDisconnect]=useState(false);
   const [state, setState] = useState<MacStatus>(emptyMac);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  useEffect(()=>{setAllowDisconnect(false);},[adapter]);
   useEffect(() => {if (!demo && isDesktop()) {let alive=true; const refresh=()=>native<MacStatus>('mac_status').then(s=>{if(alive)setState(s);}).catch(e=>{if(alive)setError(String(e));});void refresh();const timer=setInterval(()=>void refresh(),2000);return ()=>{alive=false;clearInterval(timer);};}},[demo]);
   async function operation(command:string) {
     setBusy(true);setError('');
-    try {const result=await native<MacStatus|string>(command, command==='mac_start'?{adapter,profile}:undefined);if(typeof result==='string')setError(result);else setState(result);onChanged();}catch(e){setError(String(e));}finally{setBusy(false);}
+    try {const result=await native<MacStatus|string>(command, command==='mac_start'?{adapter,profile,...(allowDisconnect?{allowDisconnect:true}:{})}:undefined);if(typeof result==='string')setError(result);else setState(result);onChanged();}catch(e){setError(String(e));}finally{setBusy(false);}
   }
   return <Panel title="MAC SPOOFING // DEVICE PREFIX" meta={state.active ? 'LEASE ACTIVE' : 'IDLE'}>
-    <div className="two-column"><label className="field-label">Idle Wi-Fi adapter<select aria-label="MAC adapter" value={adapter} disabled={busy||state.active||captureRunning} onChange={e=>setAdapter(e.target.value)}><option value="">Select adapter</option>{adapters.filter(a=>a.mode==='managed').map(a=><option key={a.name} value={a.name} disabled={a.connected}>{a.name}{a.connected?' / CONNECTED':''}</option>)}</select></label>
+    <div className="two-column"><label className="field-label">Wi-Fi adapter · built-in or USB<select aria-label="MAC adapter" value={adapter} disabled={busy||state.active||captureRunning} onChange={e=>setAdapter(e.target.value)}><option value="">Select adapter</option>{adapters.map(a=><option key={a.name} value={a.name} disabled={a.mode!=='managed'}>{a.name} / {a.driver} / {a.connected?'CONNECTED':a.mode}</option>)}</select></label>
     <label className="field-label">MAC profile<select aria-label="MAC profile" value={profile} disabled={busy||state.active} onChange={e=>setProfile(e.target.value)}><option value="private">Random private address</option><option value="apple">iPhone / Apple vendor prefix</option><option value="samsung">Android / Samsung vendor prefix</option><option value="intel">Laptop / Intel vendor prefix</option><option value="raspberry">Raspberry Pi vendor prefix</option></select></label></div>
-    <p className="muted small">Changes the adapter MAC only. Vendor prefixes do not emulate a phone, OS, DHCP fingerprint or radio capabilities. Private-address mode is generally preferable for privacy. NetworkManager may replace the address during later connection changes.</p>
+    <label className="checkbox"><input type="checkbox" checked={allowDisconnect} disabled={busy||state.active||captureRunning} onChange={e=>setAllowDisconnect(e.target.checked)} />I allow Wi-Fi disconnection for this MAC lease. The selected card stays disconnected until RESTORE ORIGINAL MAC; its saved profile is then reactivated.</label>
+    <p className="muted small">Built-in and USB cards are allowed in managed mode. Finish capture and restore managed mode before applying a profile. NetworkManager is released during the lease to prevent an immediate address overwrite. Driver support is required. Vendor prefixes change only the MAC, not the phone model, OS or radio capabilities.</p>
     <dl className="key-values"><dt>Lease adapter</dt><dd>{state.adapter||'—'}</dd><dt>Original MAC</dt><dd>{state.original||'—'}</dd><dt>Assigned MAC</dt><dd>{state.assigned||'—'}</dd><dt>Current readback</dt><dd>{state.current||'—'}{state.active&&state.current!==state.assigned?' / CHANGED EXTERNALLY':''}</dd></dl>
-    <div className="button-row"><button className="primary" disabled={demo||!isDesktop()||!adapter||busy||state.active||captureRunning} onClick={()=>void operation('mac_start')}>APPLY MAC PROFILE</button><button disabled={demo||busy||!state.active||captureRunning} onClick={()=>void operation('mac_restore')}>RESTORE ORIGINAL MAC</button><button disabled={demo||busy||state.active||captureRunning||!isDesktop()} onClick={()=>void operation('mac_recover')}>RESTORE STALE MAC</button></div>
+    <div className="button-row"><button className="primary" disabled={demo||!isDesktop()||!adapter||busy||state.active||captureRunning||!!adapters.find(a=>a.name===adapter)?.connected&&!allowDisconnect} onClick={()=>void operation('mac_start')}>APPLY MAC PROFILE</button><button disabled={demo||busy||!state.active||captureRunning} onClick={()=>void operation('mac_restore')}>RESTORE ORIGINAL MAC</button><button disabled={demo||busy||state.active||captureRunning||!isDesktop()} onClick={()=>void operation('mac_recover')}>RESTORE STALE MAC</button></div>
     {(error||state.error)&&<p className="error-inline" role="alert">{error||state.error}</p>}
   </Panel>;
 }

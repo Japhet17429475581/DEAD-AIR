@@ -44,7 +44,8 @@ pub mod linux {
                     && uuid::Uuid::parse_str(&args[4]).is_ok()
             }
             Some("mac-profile") => {
-                args.len() == 4
+                (args.len() == 4
+                    || args.len() == 5 && matches!(args[4].as_str(), "dedicated" | "exclusive"))
                     && crate::model::valid_interface(&args[1])
                     && crate::mac::profile_mac(&args[2]).is_ok()
                     && uuid::Uuid::parse_str(&args[3]).is_ok()
@@ -311,6 +312,24 @@ pub mod linux {
     #[cfg(test)]
     mod tests {
         use super::*;
+        #[test]
+        fn mac_connection_consent_is_a_fixed_optional_flag() {
+            let mut args = vec![
+                "mac-profile".to_string(),
+                "wlan0".into(),
+                "private".into(),
+                uuid::Uuid::new_v4().to_string(),
+            ];
+            assert!(allowed(&args));
+            args.push("exclusive".into());
+            assert!(allowed(&args));
+            *args.last_mut().unwrap() = "anything".into();
+            assert!(!allowed(&args));
+            *args.last_mut().unwrap() = "dedicated".into();
+            assert!(allowed(&args));
+            args.push("extra".into());
+            assert!(!allowed(&args));
+        }
         #[test]
         fn broker_denies_arbitrary_commands_and_paths() {
             for args in [

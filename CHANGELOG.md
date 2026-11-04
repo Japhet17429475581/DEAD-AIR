@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.3
+
+- Replaced unconditional waiting-for-client status with evidence-based receiver health, elapsed/remaining time, raw PCAP records, file size, actual frequency, beacons and EAPOL counters.
+- Added helper progress reports, stale/missing report detection, and visible channel-drift failure. No telemetry/timer creates packet events.
+- Record all target beacons; normal AP reception no longer depends on a client authenticating.
+- Preserve explicit stop reasons and distinguish no target frames, no EAPOL, and partial exchanges after normal completion.
+- Allow connected managed cards, including built-in cards, for MAC profiles after disconnection consent. Keep NetworkManager released during the lease and restore the saved profile afterward.
+- Preserve MAC errors/rollback diagnostics and allow retry after a cleanly rejected preflight.
+- Added actual airodump-ng offline output compatibility coverage and GUI tests for silent receivers and built-in MAC consent. Physical hardware validation remains outstanding.
+
 ## 0.3.2
 
 - Fixed rejection of existing monitor interfaces, including those not represented by NetworkManager.

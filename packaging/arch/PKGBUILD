@@ -1,5 +1,5 @@
 pkgname=dead-air
-pkgver=0.3.2
+pkgver=0.3.3
 pkgrel=1
 pkgdesc='Passive wireless diagnostics workstation'
 arch=('x86_64' 'aarch64')

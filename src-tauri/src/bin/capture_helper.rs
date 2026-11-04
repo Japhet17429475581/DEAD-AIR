@@ -76,6 +76,10 @@ mod linux {
         assigned: String,
         up: bool,
         managed: bool,
+        #[serde(default)]
+        connection: Option<String>,
+        #[serde(default = "default_autoconnect")]
+        autoconnect: bool,
     }
     struct MacGuard {
         path: PathBuf,
@@ -109,6 +113,14 @@ mod linux {
                 std::thread::sleep(Duration::from_millis(100));
             }
             idle_radio(&r.phy, &r.interface)?;
+            if dead_air::mac::current_mac(&r.interface)? == r.original {
+                let state = snapshot(&r.interface)?;
+                if state.state == 100 && state.uuid == r.connection {
+                    reconnect(&r.interface, r.autoconnect, r.connection.as_deref())?;
+                    fs::remove_file(&self.path).map_err(|e| e.to_string())?;
+                    return Ok(());
+                }
+            }
             control(&r.interface, None, true)?;
             if output("iw", &["dev", &r.interface, "link"])?.contains("Connected to") {
                 return Err("MAC restoration refused on a connected adapter; disconnect it and retry recovery".into());
@@ -139,6 +151,7 @@ mod linux {
             if dead_air::mac::current_mac(&r.interface)? != r.original {
                 return Err("MAC restoration readback did not match original address".into());
             }
+            reconnect(&r.interface, r.autoconnect, r.connection.as_deref())?;
             fs::remove_file(&self.path).map_err(|e| e.to_string())
         }
     }
@@ -155,6 +168,7 @@ mod linux {
         source: &str,
         profile: &str,
         token: &str,
+        allow_disconnect: bool,
     ) -> Result<(), String> {
         if !valid_interface(source) {
             return Err("Invalid interface".into());
@@ -180,8 +194,13 @@ mod linux {
         {
             return Err("MAC profiles require an idle managed Wi-Fi adapter".into());
         }
-        if output("iw", &["dev", source, "link"])?.contains("Connected to") {
-            return Err("MAC change refused on connected adapter".into());
+        let before = snapshot(source)?;
+        dead_air::mac::validate_connection_state(before.state, allow_disconnect)?;
+        if output("iw", &["dev", source, "link"])?.contains("Connected to") && before.state != 100 {
+            return Err("The connected card is not controlled by a restorable NetworkManager profile; disconnect it explicitly first".into());
+        }
+        if before.state == 100 && before.uuid.is_none() {
+            return Err("Cannot save the active Wi-Fi profile for MAC restoration".into());
         }
         // An unresolved earlier operation must be recovered, not overwritten.
         for entry in fs::read_dir(root).map_err(|e| e.to_string())? {
@@ -209,7 +228,7 @@ mod linux {
             .map_err(|e| e.to_string())?
             & 1
             != 0;
-        let managed = control(source, None, true)?;
+        let managed = before.managed;
         let path = root.join(format!("{token}.mac"));
         let record = MacJournal {
             uid,
@@ -222,6 +241,8 @@ mod linux {
             assigned: assigned.clone(),
             up,
             managed,
+            connection: before.uuid,
+            autoconnect: before.autoconnect,
         };
         let mut journal = OpenOptions::new()
             .write(true)
@@ -236,6 +257,9 @@ mod linux {
         journal.sync_all().map_err(|e| e.to_string())?;
         let guard = MacGuard { path, record };
         let changed = (|| {
+            if before.state == 100 {
+                disconnect(source)?;
+            }
             control(source, Some(false), true)?;
             run("ip", &["link", "set", "dev", source, "down"])?;
             run("ip", &["link", "set", "dev", source, "address", &assigned])?;
@@ -243,7 +267,8 @@ mod linux {
                 "ip",
                 &["link", "set", "dev", source, if up { "up" } else { "down" }],
             )?;
-            control(source, Some(managed), false)?;
+            // Keep NetworkManager released until the lease is restored.
+            // Re-enabling it here can immediately replace the assigned MAC.
             if dead_air::mac::current_mac(source)? != assigned {
                 return Err(
                     "MAC assignment readback mismatch; NetworkManager or driver replaced it".into(),
@@ -599,6 +624,12 @@ mod linux {
     mod tests {
         use super::*;
         #[test]
+        fn old_mac_journals_do_not_invent_a_saved_connection() {
+            let record:MacJournal=serde_json::from_value(serde_json::json!({"uid":1000,"pid":1,"start":"fixture","interface":"wlan0","ifindex":2,"phy":"phy0","original":"02:00:00:00:00:01","assigned":"02:00:00:00:00:02","up":true,"managed":true})).unwrap();
+            assert!(record.connection.is_none());
+            assert!(record.autoconnect);
+        }
+        #[test]
         fn legacy_journal_keeps_original_recovery_semantics() {
             let record: Journal = serde_json::from_value(serde_json::json!({
                 "uid":1000,"pid":1,"start":"test","interface":"da123","ifindex":3,
@@ -683,8 +714,13 @@ mod linux {
         if !meta.is_dir() || meta.uid() != 0 || meta.mode() & 0o077 != 0 {
             return Err("Unsafe helper runtime directory".into());
         }
-        if args.len() == 5 && args[1] == "mac-profile" {
-            return mac_profile(&root, uid, &args[2], &args[3], &args[4]);
+        if (args.len() == 5 || args.len() == 6) && args[1] == "mac-profile" {
+            let consent = match args.get(5).map(String::as_str) {
+                None | Some("dedicated") => false,
+                Some("exclusive") => true,
+                _ => return Err("Invalid MAC connection mode".into()),
+            };
+            return mac_profile(&root, uid, &args[2], &args[3], &args[4], consent);
         }
         if args.len() == 2 && args[1] == "mac-recover" {
             return mac_recover(&root, uid);
@@ -911,9 +947,15 @@ mod linux {
             &args[3],
             frequency,
         )?;
-        send(serde_json::json!({"kind":"ready","interface":interface,"token":token.to_string()}))?;
-        let deadline = Instant::now() + Duration::from_secs(300);
+        send(
+            serde_json::json!({"kind":"ready","interface":interface,"token":token.to_string(),"version":env!("CARGO_PKG_VERSION")}),
+        )?;
+        let deadline =
+            Instant::now() + Duration::from_secs(dead_air::capture_health::CAPTURE_LIMIT_SECONDS);
         let mut check = Instant::now();
+        let mut report_at = Instant::now();
+        let mut frequency_check_at = Instant::now() - Duration::from_secs(2);
+        let mut actual_frequency = None;
         let mut count = 0;
         while !stopped.load(Ordering::Relaxed) && Instant::now() < deadline && count < 20000 {
             let mut poll = libc::pollfd {
@@ -949,6 +991,24 @@ mod linux {
                 }
                 None => std::thread::sleep(Duration::from_millis(20)),
             }
+            if frequency_check_at.elapsed() >= Duration::from_secs(2) {
+                let info = output("iw", &["dev", &interface, "info"])?;
+                if interface_mode(&info)? != CaptureAdapterMode::ExistingMonitor {
+                    return Err(
+                        "The capture interface left monitor mode; observation stopped".into(),
+                    );
+                }
+                actual_frequency =
+                    MonitorChannel::from_info(&info)?.map(|channel| channel.frequency);
+                if actual_frequency.is_some_and(|actual| actual != frequency) {
+                    return Err(format!("Capture frequency changed: requested {frequency} MHz, actual {} MHz. Observation stopped; another process or the driver may be changing the channel.", actual_frequency.unwrap()));
+                }
+                frequency_check_at = Instant::now();
+            }
+            if report_at.elapsed() >= Duration::from_secs(1) {
+                send(serde_json::json!({"kind":"progress","report":cap.report(actual_frequency)}))?;
+                report_at = Instant::now();
+            }
         }
         cap.stop()?;
         while count < 20000 {
@@ -964,7 +1024,9 @@ mod linux {
                 None => break,
             }
         }
+        send(serde_json::json!({"kind":"progress","report":cap.report(actual_frequency)}))?;
         drop(cap);
+        send(serde_json::json!({"kind":"restoring"}))?;
         guard.cleanup()?;
         send(
             serde_json::json!({"kind":"done","reason":if count>=20000{"frame limit"}else if Instant::now()>=deadline{"five-minute limit"}else{"stopped"}}),

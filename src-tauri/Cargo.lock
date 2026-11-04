@@ -567,7 +567,7 @@ dependencies = [
 
 [[package]]
 name = "dead-air"
-version = "0.3.2"
+version = "0.3.3"
 dependencies = [
  "fs2",
  "libc",

@@ -8,7 +8,8 @@ export interface Adapter { name: string; driver: string; phy: string; mode: stri
 export interface ToolStatus { name: string; available: boolean; version: string; detail: string }
 export interface Diagnostics { platform: string; tools: ToolStatus[]; adapters: Adapter[]; errors: string[] }
 export interface Packet { time: number; source: string; destination: string; station: string; kind: string; message: number | null; replay: string | null; signal: number | null; bytes: number }
-export interface Capture { running: boolean; status: string; packets: Packet[]; count: number; dropped: number; error: string | null; exchanges: { station: string; messages: number[]; complete: boolean }[]; pmkids: {station:string;bssid:string;value:string;source:string;time:number}[] }
+export interface CaptureProgress { state: string; elapsedSeconds: number; remainingSeconds: number; limitSeconds: number; recordsRead: number | null; pcapBytes: number | null; beacons: number; eapolFrames: number; actualFrequency: number | null; heartbeatAgeSeconds: number | null; helperVersion: string | null; note: string }
+export interface Capture { running: boolean; status: string; packets: Packet[]; count: number; dropped: number; error: string | null; exchanges: { station: string; messages: number[]; complete: boolean }[]; pmkids: {station:string;bssid:string;value:string;source:string;time:number}[]; progress?: CaptureProgress | null; stopReason?: string | null }
 export interface LabStatus { running: boolean; status: string; lines: string[]; exitCode: number | null }
 export interface Network {
   ssid: string; bssid: string; channel: number; frequency: number;
@@ -43,5 +44,5 @@ export function review(network: Network) {
   ];
 }
 export function reportFor(networks: Network[], source: Source) {
-  return { application: 'DEAD//AIR', version: '0.3.2', source, generatedAt: new Date().toISOString(), identifiers: 'BSSIDs masked', networks: networks.map(n => ({ ...n, ssid: cleanSsid(n.ssid), bssid: maskBssid(n.bssid) })) };
+  return { application: 'DEAD//AIR', version: '0.3.3', source, generatedAt: new Date().toISOString(), identifiers: 'BSSIDs masked', networks: networks.map(n => ({ ...n, ssid: cleanSsid(n.ssid), bssid: maskBssid(n.bssid) })) };
 }

@@ -269,13 +269,19 @@ pub async fn mac_start(
     state: State<'_, Backend>,
     adapter: String,
     profile: String,
+    allow_disconnect: Option<bool>,
 ) -> Result<crate::mac::MacStatus, String> {
     let _op = state.operation.lock().await;
     state.ready()?;
     if state.capture.lock().await.status().await.running {
         return Err("Stop capture before changing MAC".into());
     }
-    state.mac.lock().await.start(&adapter, &profile).await
+    state
+        .mac
+        .lock()
+        .await
+        .start(&adapter, &profile, allow_disconnect.unwrap_or(false))
+        .await
 }
 #[tauri::command]
 pub async fn mac_restore(state: State<'_, Backend>) -> Result<crate::mac::MacStatus, String> {

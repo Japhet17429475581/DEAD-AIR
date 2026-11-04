@@ -3,7 +3,11 @@ use crate::{
     packets::{self, RawFrame, Tracker},
 };
 use serde::Deserialize;
-use std::{process::Stdio, sync::Arc, time::Duration};
+use std::{
+    process::Stdio,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, BufReader},
     sync::{oneshot, Mutex},
@@ -40,6 +44,54 @@ fn validate_capture_adapter(adapter: &Adapter, allow_disconnect: bool) -> Result
 struct Data {
     status: CaptureStatus,
     frames: Vec<RawFrame>,
+    ready_at: Option<Instant>,
+    finished_at: Option<Instant>,
+    last_report_at: Option<Instant>,
+    report: Option<crate::capture_health::CollectorReport>,
+    helper_version: Option<String>,
+    beacons: u64,
+    eapol_frames: u64,
+    restoring: bool,
+}
+impl Data {
+    fn snapshot(&self, now: Instant) -> CaptureStatus {
+        let mut status = self.status.clone();
+        if let Some(started) = self.ready_at {
+            let end = self.finished_at.unwrap_or(now);
+            let report_age = self
+                .last_report_at
+                .map(|last| end.saturating_duration_since(last).as_secs());
+            let mut progress = crate::capture_health::progress(
+                end.saturating_duration_since(started).as_secs(),
+                if self.restoring || !status.running {
+                    report_age.map(|_| 0)
+                } else {
+                    report_age
+                },
+                self.report.as_ref(),
+                status.count,
+                self.beacons,
+                self.eapol_frames,
+                self.helper_version.as_deref(),
+            );
+            progress.heartbeat_age_seconds = report_age;
+            if status.running && self.restoring {
+                progress.state = "RESTORING".into();
+                progress.note="The collector is stopping and the adapter is being restored. Receive-health reports are not expected during restoration; no further client authentication is being awaited.".into();
+            }
+            if status.running && self.restoring {
+                status.status = "STOPPING / RESTORING INTERFACE".into();
+            } else if status.running && status.exchanges.iter().all(|e| !e.complete) {
+                status.status = if status.exchanges.is_empty() {
+                    progress.state.clone()
+                } else {
+                    "EXCHANGE PARTIAL".into()
+                };
+            }
+            status.progress = Some(progress);
+        }
+        status
+    }
 }
 pub struct CaptureService {
     data: Arc<Mutex<Data>>,
@@ -57,7 +109,7 @@ impl Default for CaptureService {
 }
 impl CaptureService {
     pub async fn status(&self) -> CaptureStatus {
-        self.data.lock().await.status.clone()
+        self.data.lock().await.snapshot(Instant::now())
     }
     pub async fn start(&mut self, request: CaptureRequest) -> Result<CaptureStatus, String> {
         if !request.authorized {
@@ -131,8 +183,25 @@ impl CaptureService {
                         if line.len()>=24576{failure=Some("Helper output exceeded protocol limit".into());break}
                         let message:serde_json::Value=match serde_json::from_slice(&line){Ok(v)=>v,Err(_)=>{failure=Some("Malformed helper message".into());break}};
                         match message["kind"].as_str(){
-                            Some("ready")=>{shared.lock().await.status.status="WAITING FOR CLIENT AUTHENTICATION".into()},
-                            Some("done")=>{clean=true;break},
+                            Some("ready")=>{
+                                let mut data=shared.lock().await;
+                                data.ready_at=Some(Instant::now());
+                                data.helper_version=message["version"].as_str().map(|s|s.chars().take(64).collect());
+                                data.status.status="RECEPTION_UNCONFIRMED".into();
+                            },
+                            Some("progress")=>{
+                                let report=match serde_json::from_value::<crate::capture_health::CollectorReport>(message["report"].clone()) {
+                                    Ok(report)=>report,
+                                    Err(_)=>{failure=Some("Malformed helper receive-health report".into());break;}
+                                };
+                                let mut data=shared.lock().await;
+                                data.last_report_at=Some(Instant::now());data.report=Some(report);
+                            },
+                            Some("restoring")=>{shared.lock().await.restoring=true;},
+                            Some("done")=>{
+                                shared.lock().await.status.stop_reason=message["reason"].as_str().map(|s|s.chars().take(64).collect());
+                                clean=true;break
+                            },
                             Some("error")=>{failure=Some(message["message"].as_str().unwrap_or("Helper failed").to_string());break},
                             Some("packet")=>{
                                 let bytes:Vec<u8>=match serde_json::from_value(message["data"].clone()){Ok(v)=>v,Err(_)=>continue};if bytes.len()>4096{continue}
@@ -141,6 +210,8 @@ impl CaptureService {
                                     let observations=crate::pmkid::observe(&bytes,time,bssid);
                                     if let Some(key)=key{tracker.observe(key)}
                                     let mut data=shared.lock().await;
+                                    if packet.kind=="Beacon" {data.beacons+=1;}
+                                    if packet.message.is_some() {data.eapol_frames+=1;}
                                     for found in observations {if data.status.pmkids.len()<128&&!data.status.pmkids.iter().any(|old|old.station==found.station&&old.value==found.value){data.status.pmkids.push(found);}}
                                     data.status.count+=1;if data.frames.len()<4096{data.frames.push(RawFrame{time,data:bytes})}else{data.status.dropped+=1}
                                     if data.status.packets.len()>=200{data.status.packets.remove(0);}data.status.packets.push(packet);data.status.exchanges=tracker.exchanges();
@@ -193,10 +264,17 @@ impl CaptureService {
                 }
             }
             let mut data = shared.lock().await;
+            data.finished_at = Some(Instant::now());
             data.status.running = false;
             data.status.error = failure;
             data.status.status = if data.status.error.is_some() {
                 "FAILED / CHECK RESTORATION"
+            } else if clean && data.status.count == 0 {
+                "STOPPED / NO TARGET FRAMES"
+            } else if clean && data.status.exchanges.is_empty() {
+                "STOPPED / NO EAPOL EXCHANGE"
+            } else if clean && !data.status.exchanges.iter().any(|e| e.complete) {
+                "STOPPED / PARTIAL EAPOL EXCHANGE"
             } else if clean {
                 "STOPPED / RESOURCES RELEASED"
             } else {
@@ -207,6 +285,9 @@ impl CaptureService {
         Ok(self.status().await)
     }
     pub async fn stop(&mut self) -> Result<CaptureStatus, String> {
+        if self.status().await.running {
+            self.data.lock().await.restoring = true;
+        }
         if let Some(tx) = self.stop.take() {
             let _ = tx.send(());
         }
@@ -241,6 +322,41 @@ impl CaptureService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn status_exposes_silence_without_creating_packets_and_freezes_after_stop() {
+        let start = Instant::now();
+        let mut data = Data::default();
+        data.status.running = true;
+        data.ready_at = Some(start);
+        data.last_report_at = Some(start + Duration::from_secs(20));
+        data.report = Some(crate::capture_health::CollectorReport {
+            records_read: 0,
+            pcap_bytes: Some(24),
+            actual_frequency: Some(2437),
+        });
+        let status = data.snapshot(start + Duration::from_secs(21));
+        assert_eq!(status.status, "NO_TARGET_FRAMES");
+        assert_eq!(status.count, 0);
+        assert!(status.packets.is_empty());
+        assert!(status.exchanges.is_empty());
+        data.restoring = true;
+        assert_eq!(
+            data.snapshot(start + Duration::from_secs(40))
+                .progress
+                .unwrap()
+                .state,
+            "RESTORING"
+        );
+        data.status.running = false;
+        data.finished_at = Some(start + Duration::from_secs(30));
+        assert_eq!(
+            data.snapshot(start + Duration::from_secs(90))
+                .progress
+                .unwrap()
+                .elapsed_seconds,
+            30
+        );
+    }
     #[test]
     fn monitor_state_is_usable_without_advertised_capability_but_does_not_bypass_consent() {
         let mut adapter = Adapter {

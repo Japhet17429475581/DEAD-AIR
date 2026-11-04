@@ -8,7 +8,7 @@
 Rust / Tauri · React / TypeScript · Phosphor green · Crimson eyes
 
 [![Linux build](https://github.com/Japhet17429475581/DEAD-AIR/actions/workflows/linux.yml/badge.svg)](https://github.com/Japhet17429475581/DEAD-AIR/actions/workflows/linux.yml)
-[![Version](https://img.shields.io/badge/version-0.3.2-39FF78?style=flat&labelColor=080d0a)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.3.3-39FF78?style=flat&labelColor=080d0a)](CHANGELOG.md)
 [![Platform](https://img.shields.io/badge/platform-Linux-39FF78?style=flat&labelColor=080d0a)](docs/BUILDING.md)
 [![License: MIT](https://img.shields.io/badge/license-MIT-39FF78?style=flat&labelColor=080d0a)](LICENSE)
 
@@ -29,6 +29,8 @@ LIVE mode reports native results and errors. DEMO mode is a separate, explicitly
 > **Development release:** the native backend and Linux packages are implemented. Physical Wi-Fi capture, driver transitions, MAC restoration, and reconnect recovery still need acceptance testing on real Linux hardware.
 
 **0.3.2 adapter fix:** capture now reuses the selected interface, avoiding a second virtual-interface requirement. Existing monitor interfaces are accepted and retain their original mode. Driver/collector errors are preserved in a selectable GUI panel. See [the fix and verification notes](docs/CAPTURE-TROUBLESHOOTING.md).
+
+**0.3.3 receive diagnostics:** replaces the unconditional wait-for-client status with evidence of AP reception, PCAP records, actual frequency, helper reports, and an observation countdown. Records all target beacons to make reception visible independently of authentication. Connected managed cards can use MAC leases with explicit disconnection consent; Wi-Fi stays disconnected until the original address/profile are restored. See [receive health and MAC lease notes](docs/RECEIVER-HEALTH.md).
 
 ## Features
 

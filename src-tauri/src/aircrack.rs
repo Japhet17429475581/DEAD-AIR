@@ -23,6 +23,7 @@ pub mod linux {
         stopped: bool,
         stderr: ChildStderr,
         diagnostic: std::collections::VecDeque<u8>,
+        records_read: u64,
     }
     impl Airodump {
         pub fn start(
@@ -56,6 +57,7 @@ pub mod linux {
                 .args([
                     "--bssid",
                     bssid,
+                    "--beacons",
                     "-C",
                     &frequency.to_string(),
                     "--output-format",
@@ -108,6 +110,7 @@ pub mod linux {
                 stopped: false,
                 stderr,
                 diagnostic: std::collections::VecDeque::new(),
+                records_read: 0,
             })
         }
         fn drain_diagnostics(&mut self) {
@@ -164,7 +167,25 @@ pub mod linux {
             if file.metadata().map_err(|e| e.to_string())?.len() > 16 * 1024 * 1024 {
                 return Err("16 MiB RAM capture limit reached; capture stopped".into());
             }
-            read_pcap_record(file, &mut self.offset)
+            let record = read_pcap_record(file, &mut self.offset)?;
+            if record.is_some() {
+                self.records_read = self.records_read.saturating_add(1);
+            }
+            Ok(record)
+        }
+        pub fn report(
+            &self,
+            actual_frequency: Option<u32>,
+        ) -> crate::capture_health::CollectorReport {
+            crate::capture_health::CollectorReport {
+                records_read: self.records_read,
+                pcap_bytes: self
+                    .file
+                    .as_ref()
+                    .and_then(|f| f.metadata().ok())
+                    .map(|m| m.len()),
+                actual_frequency,
+            }
         }
         pub fn stop(&mut self) -> Result<(), String> {
             if self.stopped {

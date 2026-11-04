@@ -88,6 +88,9 @@ pub struct CaptureStatus {
     pub error: Option<String>,
     pub exchanges: Vec<Exchange>,
     pub pmkids: Vec<crate::pmkid::Observation>,
+    pub progress: Option<crate::capture_health::CaptureProgress>,
+    #[serde(rename = "stopReason")]
+    pub stop_reason: Option<String>,
 }
 impl Default for CaptureStatus {
     fn default() -> Self {
@@ -100,6 +103,8 @@ impl Default for CaptureStatus {
             error: None,
             exchanges: vec![],
             pmkids: vec![],
+            progress: None,
+            stop_reason: None,
         }
     }
 }

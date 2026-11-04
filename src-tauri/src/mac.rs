@@ -58,11 +58,25 @@ pub fn current_mac(adapter: &str) -> Result<String, String> {
     crate::model::parse_mac(address.trim())?;
     Ok(address.trim().to_uppercase())
 }
+pub fn validate_connection_state(state: u32, allow_disconnect: bool) -> Result<(), String> {
+    if (40..=110).contains(&state) && state != 100 {
+        return Err(
+            "Wi-Fi is changing connection state; wait before applying a MAC profile".into(),
+        );
+    }
+    if state == 100 && !allow_disconnect {
+        return Err(
+            "Allow temporary Wi-Fi disconnection before changing this connected card's MAC".into(),
+        );
+    }
+    Ok(())
+}
 pub struct MacService {
     child: Option<Child>,
     input: Option<ChildStdin>,
     reader: Option<BufReader<tokio::process::ChildStdout>>,
     state: MacStatus,
+    diagnostic: Option<tokio::task::JoinHandle<String>>,
 }
 impl Default for MacService {
     fn default() -> Self {
@@ -71,6 +85,7 @@ impl Default for MacService {
             input: None,
             reader: None,
             state: MacStatus::default(),
+            diagnostic: None,
         }
     }
 }
@@ -109,7 +124,12 @@ impl MacService {
         }
         state
     }
-    pub async fn start(&mut self, adapter: &str, profile: &str) -> Result<MacStatus, String> {
+    pub async fn start(
+        &mut self,
+        adapter: &str,
+        profile: &str,
+        allow_disconnect: bool,
+    ) -> Result<MacStatus, String> {
         if self.child.is_some() || self.state.error.is_some() {
             return Err("Restore the previous MAC operation first".into());
         }
@@ -118,12 +138,31 @@ impl MacService {
         }
         profile_mac(profile)?;
         let token = uuid::Uuid::new_v4().to_string();
-        let mut child = crate::privilege::command(&["mac-profile", adapter, profile, &token])
-            .await?
-            .stdin(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .map_err(|e| e.to_string())?;
+        let mut child = crate::privilege::command(&[
+            "mac-profile",
+            adapter,
+            profile,
+            &token,
+            if allow_disconnect {
+                "exclusive"
+            } else {
+                "dedicated"
+            },
+        ])
+        .await?
+        .stdin(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| e.to_string())?;
+        let stderr = child
+            .stderr
+            .take()
+            .ok_or("MAC helper diagnostics missing")?;
+        self.diagnostic = Some(tokio::spawn(async move {
+            let mut bytes = vec![];
+            let _ = stderr.take(8192).read_to_end(&mut bytes).await;
+            String::from_utf8_lossy(&bytes).into_owned()
+        }));
         self.input = child.stdin.take();
         self.reader = Some(BufReader::new(
             child.stdout.take().ok_or("MAC helper stdout missing")?,
@@ -137,7 +176,7 @@ impl MacService {
                     profile: profile.into(),
                     original: value["original"].as_str().unwrap_or("").into(),
                     assigned: value["assigned"].as_str().unwrap_or("").into(),
-                    current: current_mac(adapter)?,
+                    current: value["assigned"].as_str().unwrap_or("").into(),
                     error: None,
                 };
                 Ok(self.status())
@@ -145,11 +184,36 @@ impl MacService {
             result => {
                 let error = result.err().unwrap_or("Unexpected MAC helper reply".into());
                 self.input.take();
-                let cleanup = self.stop().await;
-                Err(match cleanup {
-                    Ok(_) => error,
-                    Err(e) => format!("{error}; restoration: {e}"),
-                })
+                let exited = if let Some(mut child) = self.child.take() {
+                    let done = matches!(
+                        tokio::time::timeout(Duration::from_secs(45), child.wait()).await,
+                        Ok(Ok(_))
+                    );
+                    if !done {
+                        let _ = child.kill().await;
+                    }
+                    done
+                } else {
+                    true
+                };
+                self.reader.take();
+                let detail = self.finish_diagnostic().await;
+                if !exited
+                    || detail.contains("MAC restoration required:")
+                    || detail.contains("diagnostics did not close")
+                {
+                    self.state.error = Some(format!(
+                        "{error}; restoration requires inspection. {detail}"
+                    ));
+                    Err(self.state.error.clone().unwrap())
+                } else {
+                    self.state = MacStatus::default();
+                    Err(if detail.trim().is_empty() {
+                        error
+                    } else {
+                        format!("{error}; {detail}")
+                    })
+                }
             }
         }
     }
@@ -157,18 +221,21 @@ impl MacService {
         self.input.take();
         if let Some(mut child) = self.child.take() {
             let reply = if let Some(reader) = self.reader.as_mut() {
-                message(reader, 30).await
+                message(reader, 45).await
             } else {
                 Err("Missing MAC restoration reply".into())
             };
             let exit = tokio::time::timeout(Duration::from_secs(3), child.wait()).await;
             self.reader.take();
+            let diagnostic = self.finish_diagnostic().await;
             self.state.active = false;
             if !matches!(reply,Ok(ref v) if v["kind"]=="mac-restored")
                 || !matches!(exit,Ok(Ok(ref code)) if code.success())
             {
-                self.state.error =
-                    Some("MAC restoration not confirmed; use RESTORE STALE MAC in Adapters".into());
+                let reason = reply
+                    .err()
+                    .unwrap_or_else(|| "No successful restoration reply".into());
+                self.state.error = Some(format!("MAC restoration not confirmed: {reason}. {diagnostic} Use RESTORE STALE MAC in Adapters."));
                 return Err(self.state.error.clone().unwrap());
             }
             self.state = MacStatus::default();
@@ -177,6 +244,19 @@ impl MacService {
             return Err(error.clone());
         }
         Ok(self.status())
+    }
+    async fn finish_diagnostic(&mut self) -> String {
+        if let Some(mut task) = self.diagnostic.take() {
+            match tokio::time::timeout(Duration::from_secs(2), &mut task).await {
+                Ok(Ok(text)) => text,
+                _ => {
+                    task.abort();
+                    "MAC helper diagnostics did not close".into()
+                }
+            }
+        } else {
+            String::new()
+        }
     }
     pub fn recovered(&mut self) {
         if self.child.is_none() {
@@ -187,6 +267,15 @@ impl MacService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn connected_builtin_card_requires_consent_and_transitions_remain_blocked() {
+        assert!(validate_connection_state(100, false).is_err());
+        assert!(validate_connection_state(100, true).is_ok());
+        assert!(validate_connection_state(30, false).is_ok());
+        for state in [40, 50, 60, 70, 80, 90, 110] {
+            assert!(validate_connection_state(state, true).is_err());
+        }
+    }
     #[test]
     fn generated_profiles_are_valid_unicast_and_private_sets_local_bit() {
         for profile in ["private", "apple", "samsung", "intel", "raspberry"] {
